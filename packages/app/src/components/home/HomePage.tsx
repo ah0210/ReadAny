@@ -11,15 +11,22 @@ import { ImportDropZone } from "./ImportDropZone";
 
 export function HomePage() {
   const { t } = useTranslation();
-  const { books, filter, importBooks } = useLibraryStore();
+  const { books, filter, importBooks, activeTag } = useLibraryStore();
 
-  const filtered = filter.search
-    ? books.filter(
-        (b) =>
-          b.meta.title.toLowerCase().includes(filter.search.toLowerCase()) ||
-          b.meta.author?.toLowerCase().includes(filter.search.toLowerCase()),
-      )
-    : books;
+  const filtered = books.filter((b) => {
+    // Tag filter
+    if (activeTag === "__uncategorized__") {
+      if (b.tags.length > 0) return false;
+    } else if (activeTag && !b.tags.includes(activeTag)) {
+      return false;
+    }
+    // Search filter
+    if (filter.search) {
+      const q = filter.search.toLowerCase();
+      return b.meta.title.toLowerCase().includes(q) || b.meta.author?.toLowerCase().includes(q);
+    }
+    return true;
+  });
 
   const handleImportClick = useCallback(async () => {
     try {
@@ -46,7 +53,7 @@ export function HomePage() {
     <div className="flex h-full flex-col">
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between px-6 pt-5 pb-2">
-        <h1 className="text-3xl font-bold text-neutral-900">{t("home.library")}</h1>
+        <h1 className="text-3xl font-bold text-neutral-900">{activeTag === "__uncategorized__" ? t("sidebar.uncategorized") : activeTag || t("home.library")}</h1>
         <button
           type="button"
           onClick={handleImportClick}

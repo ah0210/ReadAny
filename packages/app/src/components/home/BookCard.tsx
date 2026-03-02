@@ -6,7 +6,7 @@ import { useLibraryStore } from "@/stores/library-store";
 import { useAppStore } from "@/stores/app-store";
 import { useVectorModelStore } from "@/stores/vector-model-store";
 import type { Book, VectorizeProgress } from "@/types";
-import { Check, Database, Loader2, MoreVertical, Trash2 } from "lucide-react";
+import { Check, ChevronRight, Database, Hash, Loader2, MoreVertical, Plus, Trash2 } from "lucide-react";
 import { memo, useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -18,13 +18,21 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
   const { t } = useTranslation();
   const addTab = useAppStore((s) => s.addTab);
   const removeBook = useLibraryStore((s) => s.removeBook);
+  const allTags = useLibraryStore((s) => s.allTags);
+  const addTagToBook = useLibraryStore((s) => s.addTagToBook);
+  const removeTagFromBook = useLibraryStore((s) => s.removeTagFromBook);
+  const addTag = useLibraryStore((s) => s.addTag);
   const hasVectorCapability = useVectorModelStore((s) => s.hasVectorCapability);
   const [showMenu, setShowMenu] = useState(false);
+  const [showTagMenu, setShowTagMenu] = useState(false);
+  const [newTagInput, setNewTagInput] = useState("");
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [vectorizing, setVectorizing] = useState(false);
   const [vectorProgress, setVectorProgress] = useState<VectorizeProgress | null>(null);
   const coverRef = useRef<HTMLDivElement>(null);
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const progressPct = Math.round(book.progress * 100);
 
   const handleOpen = () => {
@@ -35,6 +43,7 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
     (e: React.MouseEvent) => {
       e.stopPropagation();
       setShowMenu(false);
+      setMenuPos(null);
       removeBook(book.id);
     },
     [book.id, removeBook],
@@ -44,6 +53,7 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
     async (e: React.MouseEvent) => {
       e.stopPropagation();
       setShowMenu(false);
+      setMenuPos(null);
       if (vectorizing) return;
 
       setVectorizing(true);
@@ -82,7 +92,7 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
 
   return (
     <div
-      className="group flex h-full cursor-pointer flex-col justify-end"
+      className="group relative flex h-full cursor-pointer flex-col justify-end"
       onClick={handleOpen}
     >
       {/* Cover area — 28:41 aspect ratio (Readest standard) */}
@@ -164,65 +174,153 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
 
         {/* Context menu trigger — hover only */}
         <button
+          ref={menuBtnRef}
           type="button"
           className="absolute right-1 bottom-1 z-20 rounded-md bg-black/30 p-0.5 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100"
           onClick={(e) => {
             e.stopPropagation();
-            setShowMenu(!showMenu);
+            if (showMenu) {
+              setShowMenu(false);
+              setMenuPos(null);
+            } else {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setMenuPos({ x: rect.right, y: rect.top });
+              setShowMenu(true);
+            }
           }}
         >
           <MoreVertical className="h-3.5 w-3.5 text-white" />
         </button>
-
-        {/* Context menu */}
-        {showMenu && (
-          <>
-            <div className="fixed inset-0 z-50" onClick={(e) => { e.stopPropagation(); setShowMenu(false); }} />
-            <div className="absolute right-1 bottom-8 z-50 min-w-36 rounded-lg border bg-popover p-1 shadow-lg">
-              {/* Vectorize button */}
-              <button
-                type="button"
-                className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors ${
-                  !hasVectorCapability() || vectorizing
-                    ? "text-muted-foreground opacity-50 cursor-not-allowed"
-                    : book.isVectorized
-                      ? "text-foreground hover:bg-muted"
-                      : "text-foreground hover:bg-muted"
-                }`}
-                disabled={!hasVectorCapability() || vectorizing}
-                onClick={handleVectorize}
-              >
-                {book.isVectorized ? (
-                  <>
-                    <Check className="h-3.5 w-3.5 text-green-600" />
-                    {t("home.vec_reindex")}
-                  </>
-                ) : (
-                  <>
-                    <Database className="h-3.5 w-3.5" />
-                    {t("home.vec_vectorize")}
-                  </>
-                )}
-              </button>
-              {/* Delete button */}
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-destructive hover:bg-destructive/10"
-                onClick={handleDelete}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                {t("common.remove")}
-              </button>
-            </div>
-          </>
-        )}
       </div>
+
+      {/* Context menu — fixed position to avoid any overflow clipping */}
+      {showMenu && menuPos && (
+        <>
+          <div className="fixed inset-0 z-50" onClick={(e) => { e.stopPropagation(); setShowMenu(false); setShowTagMenu(false); setMenuPos(null); }} />
+          <div
+            className="fixed z-50 min-w-36 rounded-lg border bg-popover p-1 shadow-lg"
+            style={{ bottom: window.innerHeight - menuPos.y + 4, left: menuPos.x - 152 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Vectorize button */}
+            <button
+              type="button"
+              className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors ${
+                !hasVectorCapability() || vectorizing
+                  ? "text-muted-foreground opacity-50 cursor-not-allowed"
+                  : "text-foreground hover:bg-muted"
+              }`}
+              disabled={!hasVectorCapability() || vectorizing}
+              onClick={handleVectorize}
+            >
+              {book.isVectorized ? (
+                <>
+                  <Check className="h-3.5 w-3.5 text-green-600" />
+                  {t("home.vec_reindex")}
+                </>
+              ) : (
+                <>
+                  <Database className="h-3.5 w-3.5" />
+                  {t("home.vec_vectorize")}
+                </>
+              )}
+            </button>
+            {/* Tags submenu */}
+            <div className="relative">
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-foreground hover:bg-muted"
+                onClick={(e) => { e.stopPropagation(); setShowTagMenu(!showTagMenu); }}
+              >
+                <Hash className="h-3.5 w-3.5" />
+                {t("home.manageTags")}
+                <ChevronRight className="ml-auto h-3 w-3" />
+              </button>
+              {showTagMenu && (
+                <div className="absolute right-full top-0 z-50 mr-1 min-w-36 max-h-52 overflow-y-auto rounded-lg border bg-popover p-1 shadow-lg" onClick={(e) => e.stopPropagation()}>
+                  {allTags.map((tag) => {
+                    const hasTag = book.tags.includes(tag);
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (hasTag) removeTagFromBook(book.id, tag);
+                          else addTagToBook(book.id, tag);
+                        }}
+                      >
+                        <div className={`flex h-3.5 w-3.5 items-center justify-center rounded border ${hasTag ? "border-primary bg-primary" : "border-neutral-300"}`}>
+                          {hasTag && <Check className="h-2.5 w-2.5 text-white" />}
+                        </div>
+                        <span className="truncate">{tag}</span>
+                      </button>
+                    );
+                  })}
+                  {/* Quick add new tag */}
+                  <div className="mt-1 border-t pt-1">
+                    <div className="flex items-center gap-1 px-1">
+                      <Plus className="h-3 w-3 shrink-0 text-neutral-400" />
+                      <input
+                        type="text"
+                        className="w-full bg-transparent px-1 py-1 text-xs outline-none placeholder:text-neutral-400"
+                        placeholder={t("sidebar.tagPlaceholder")}
+                        value={newTagInput}
+                        onChange={(e) => setNewTagInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          e.stopPropagation();
+                          if (e.key === "Enter" && newTagInput.trim()) {
+                            addTag(newTagInput.trim());
+                            addTagToBook(book.id, newTagInput.trim());
+                            setNewTagInput("");
+                          }
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            {/* Delete button */}
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-destructive hover:bg-destructive/10"
+              onClick={handleDelete}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              {t("common.remove")}
+            </button>
+          </div>
+        </>
+      )}
 
       {/* Info area — minimal, below cover */}
       <div className="flex w-full flex-col pt-2">
         <h4 className="truncate text-xs font-semibold leading-tight text-foreground">
           {book.meta.title}
         </h4>
+
+        {/* Tag badges */}
+        {book.tags.length > 0 ? (
+          <div className="mt-0.5 flex flex-wrap gap-0.5">
+            {book.tags.slice(0, 2).map((tag) => (
+              <span key={tag} className="inline-flex items-center rounded-full bg-neutral-100 px-1.5 py-px text-[9px] text-neutral-500">
+                {tag}
+              </span>
+            ))}
+            {book.tags.length > 2 && (
+              <span className="text-[9px] text-neutral-400">+{book.tags.length - 2}</span>
+            )}
+          </div>
+        ) : (
+          <div className="mt-0.5 flex flex-wrap gap-0.5">
+            <span className="inline-flex items-center rounded-full bg-neutral-50 px-1.5 py-px text-[9px] text-neutral-400">
+              {t("sidebar.uncategorized")}
+            </span>
+          </div>
+        )}
 
         {/* Status row */}
         <div className="mt-0.5 flex items-center justify-between" style={{ minHeight: "14px" }}>

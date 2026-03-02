@@ -21,7 +21,12 @@
     "chat": "Chat",
     "notes": "Notes",
     "skills": "Skills",
-    "allBooks": "All Books"
+    "allBooks": "All Books",
+    "uncategorized": "Uncategorized",
+    "addTag": "New Tag",
+    "tagPlaceholder": "Tag name",
+    "renameTag": "Rename",
+    "deleteTag": "Delete Tag"
   },
   "home": {
     "library": "Library",
@@ -43,7 +48,8 @@
     "vec_indexed": "Indexed",
     "vec_chunking": "Chunking...",
     "vec_indexing": "Indexing...",
-    "vec_processing": "Processing..."
+    "vec_processing": "Processing...",
+    "manageTags": "Manage Tags"
   },
   "chat": {
     "history": "History",

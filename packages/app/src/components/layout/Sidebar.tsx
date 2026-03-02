@@ -1,7 +1,7 @@
 import { useAppStore } from "@/stores/app-store";
 import { useLibraryStore } from "@/stores/library-store";
-import { BarChart3, BookOpen, ChevronDown, ChevronRight, MessageSquare, Puzzle, Search, Settings, StickyNote } from "lucide-react";
-import { useState } from "react";
+import { BarChart3, BookOpen, ChevronDown, ChevronRight, Hash, MessageSquare, MoreHorizontal, Pencil, Plus, Puzzle, Search, Settings, StickyNote, Trash2, X } from "lucide-react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 interface NavItem {
@@ -21,10 +21,16 @@ const NAV_ITEMS: NavItem[] = [
 export function HomeSidebar() {
   const { t } = useTranslation();
   const { activeTabId, setActiveTab, addTab } = useAppStore();
-  const { filter, setFilter } = useLibraryStore();
+  const { filter, setFilter, allTags, activeTag, setActiveTag, addTag, removeTag, renameTag } = useLibraryStore();
   const setShowSettings = useAppStore((s) => s.setShowSettings);
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [isLibraryExpanded, setIsLibraryExpanded] = useState(true);
+  const [isAddingTag, setIsAddingTag] = useState(false);
+  const [newTagName, setNewTagName] = useState("");
+  const [editingTag, setEditingTag] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
+  const [tagMenuOpen, setTagMenuOpen] = useState<string | null>(null);
+  const newTagInputRef = useRef<HTMLInputElement>(null);
 
   // Determine which home sub-view is active
   const activeTab = useAppStore((s) => s.tabs.find((t) => t.id === activeTabId));
@@ -97,9 +103,151 @@ export function HomeSidebar() {
               )}
               {item.expandable && isLibraryExpanded && (
                 <div className="ml-6 mt-1 space-y-0.5">
-                  <button type="button" className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs text-neutral-500 transition-colors hover:bg-muted hover:text-neutral-700" onClick={() => handleNavClick("home")}>
+                  {/* All Books */}
+                  <button
+                    type="button"
+                    className={`flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors hover:bg-muted ${
+                      activeType === "home" && !activeTag ? "bg-muted text-neutral-900 font-medium" : "text-neutral-500 hover:text-neutral-700"
+                    }`}
+                    onClick={() => { setActiveTag(""); handleNavClick("home"); }}
+                  >
                     <span>{t("sidebar.allBooks")}</span>
                   </button>
+
+                  {/* Tag list */}
+                  {allTags.map((tag) => (
+                    <div key={tag} className="group/tag relative flex items-center">
+                      {editingTag === tag ? (
+                        <input
+                          type="text"
+                          className="w-full rounded-md border border-primary/40 bg-background px-2 py-1 text-xs outline-none"
+                          value={editingName}
+                          autoFocus
+                          onChange={(e) => setEditingName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              renameTag(tag, editingName);
+                              setEditingTag(null);
+                            } else if (e.key === "Escape") {
+                              setEditingTag(null);
+                            }
+                          }}
+                          onBlur={() => {
+                            if (editingName.trim() && editingName.trim() !== tag) {
+                              renameTag(tag, editingName);
+                            }
+                            setEditingTag(null);
+                          }}
+                        />
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            className={`flex flex-1 items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors hover:bg-muted ${
+                              activeTag === tag ? "bg-muted text-neutral-900 font-medium" : "text-neutral-500 hover:text-neutral-700"
+                            }`}
+                            onClick={() => { setActiveTag(tag); handleNavClick("home"); }}
+                          >
+                            <Hash size={11} className="shrink-0 opacity-50" />
+                            <span className="truncate">{tag}</span>
+                          </button>
+                          {/* Tag context menu trigger */}
+                          <button
+                            type="button"
+                            className="absolute right-0 rounded p-0.5 text-neutral-400 opacity-0 transition-opacity hover:bg-neutral-200 hover:text-neutral-600 group-hover/tag:opacity-100"
+                            onClick={(e) => { e.stopPropagation(); setTagMenuOpen(tagMenuOpen === tag ? null : tag); }}
+                          >
+                            <MoreHorizontal size={12} />
+                          </button>
+                          {/* Tag context menu */}
+                          {tagMenuOpen === tag && (
+                            <>
+                              <div className="fixed inset-0 z-50" onClick={() => setTagMenuOpen(null)} />
+                              <div className="absolute right-0 top-6 z-50 min-w-28 rounded-lg border bg-popover p-1 shadow-lg">
+                                <button
+                                  type="button"
+                                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-foreground hover:bg-muted"
+                                  onClick={() => {
+                                    setTagMenuOpen(null);
+                                    setEditingTag(tag);
+                                    setEditingName(tag);
+                                  }}
+                                >
+                                  <Pencil size={12} />
+                                  {t("sidebar.renameTag")}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-destructive hover:bg-destructive/10"
+                                  onClick={() => {
+                                    setTagMenuOpen(null);
+                                    removeTag(tag);
+                                  }}
+                                >
+                                  <Trash2 size={12} />
+                                  {t("sidebar.deleteTag")}
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  ))}
+
+                  {/* Uncategorized */}
+                  <button
+                    type="button"
+                    className={`flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors hover:bg-muted ${
+                      activeTag === "__uncategorized__" ? "bg-muted text-neutral-900 font-medium" : "text-neutral-500 hover:text-neutral-700"
+                    }`}
+                    onClick={() => { setActiveTag("__uncategorized__"); handleNavClick("home"); }}
+                  >
+                    <Hash size={11} className="shrink-0 opacity-50" />
+                    <span className="truncate">{t("sidebar.uncategorized")}</span>
+                  </button>
+
+                  {/* Add tag input */}
+                  {isAddingTag ? (
+                    <div className="flex items-center gap-1 px-1">
+                      <input
+                        ref={newTagInputRef}
+                        type="text"
+                        className="w-full rounded-md border border-primary/40 bg-background px-2 py-1 text-xs outline-none"
+                        placeholder={t("sidebar.tagPlaceholder")}
+                        value={newTagName}
+                        autoFocus
+                        onChange={(e) => setNewTagName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && newTagName.trim()) {
+                            addTag(newTagName.trim());
+                            setNewTagName("");
+                            setIsAddingTag(false);
+                          } else if (e.key === "Escape") {
+                            setNewTagName("");
+                            setIsAddingTag(false);
+                          }
+                        }}
+                        onBlur={() => {
+                          if (newTagName.trim()) addTag(newTagName.trim());
+                          setNewTagName("");
+                          setIsAddingTag(false);
+                        }}
+                      />
+                      <button type="button" className="p-0.5 text-neutral-400 hover:text-neutral-600" onClick={() => { setNewTagName(""); setIsAddingTag(false); }}>
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs text-neutral-400 transition-colors hover:bg-muted hover:text-neutral-600"
+                      onClick={() => setIsAddingTag(true)}
+                    >
+                      <Plus size={11} className="shrink-0" />
+                      <span>{t("sidebar.addTag")}</span>
+                    </button>
+                  )}
                 </div>
               )}
             </div>

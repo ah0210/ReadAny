@@ -21,7 +21,12 @@
     "chat": "对话",
     "notes": "笔记",
     "skills": "技能",
-    "allBooks": "全部书籍"
+    "allBooks": "全部书籍",
+    "uncategorized": "未分类",
+    "addTag": "新建标签",
+    "tagPlaceholder": "标签名称",
+    "renameTag": "重命名",
+    "deleteTag": "删除标签"
   },
   "home": {
     "library": "书库",
@@ -43,7 +48,8 @@
     "vec_indexed": "已索引",
     "vec_chunking": "分块中...",
     "vec_indexing": "入库中...",
-    "vec_processing": "处理中..."
+    "vec_processing": "处理中...",
+    "manageTags": "管理标签"
   },
   "chat": {
     "history": "历史记录",

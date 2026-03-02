@@ -288,6 +288,10 @@ export interface LibraryState {
   viewMode: LibraryViewMode;
   isImporting: boolean;
   isLoaded: boolean;
+  /** All unique tags across all books */
+  allTags: string[];
+  /** Currently selected tag for filtering (empty = all books) */
+  activeTag: string;
 
   // Actions
   loadBooks: () => Promise<void>;
@@ -300,6 +304,13 @@ export interface LibraryState {
   setSortField: (field: SortField) => void;
   setSortOrder: (order: SortOrder) => void;
   importBooks: (filePaths: string[]) => Promise<void>;
+  // Tag management
+  setActiveTag: (tag: string) => void;
+  addTag: (tag: string) => void;
+  removeTag: (tag: string) => void;
+  renameTag: (oldName: string, newName: string) => void;
+  addTagToBook: (bookId: string, tag: string) => void;
+  removeTagFromBook: (bookId: string, tag: string) => void;
 }
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
@@ -313,23 +324,46 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   viewMode: "grid",
   isImporting: false,
   isLoaded: false,
+  allTags: [],
+  activeTag: "",
 
   loadBooks: async () => {
+    const computeTags = (books: Book[]) => {
+      const tagSet = new Set<string>();
+      for (const b of books) for (const t of b.tags) tagSet.add(t);
+      return [...tagSet].sort();
+    };
+
     // 1) Fast path: restore from FS cache so UI shows books instantly
     try {
       const cached = await loadFromFS<Book[]>("library-books");
       if (cached && cached.length > 0) {
-        set({ books: cached, isLoaded: true });
+        set({ books: cached, isLoaded: true, allTags: computeTags(cached) });
       }
     } catch {
       // cache miss is fine
     }
 
+    // Also restore saved tags (may include empty tags not yet assigned to books)
+    try {
+      const savedTags = await loadFromFS<string[]>("library-tags");
+      if (savedTags && savedTags.length > 0) {
+        set((state) => {
+          const merged = new Set([...state.allTags, ...savedTags]);
+          return { allTags: [...merged].sort() };
+        });
+      }
+    } catch { /* no saved tags */ }
+
     // 2) Full path: init DB and load from SQLite (source of truth)
     try {
       await db.initDatabase();
       const books = await db.getBooks();
-      set({ books, isLoaded: true });
+      const allTags = computeTags(books);
+      // Merge with any user-created tags from FS
+      const savedTags = get().allTags;
+      const merged = new Set([...allTags, ...savedTags]);
+      set({ books, isLoaded: true, allTags: [...merged].sort() });
       // Update the cache for next launch
       debouncedSave("library-books", books);
     } catch (err) {
@@ -467,5 +501,86 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     } finally {
       set({ isImporting: false });
     }
+  },
+
+  // ── Tag management ──
+
+  setActiveTag: (tag) => set({ activeTag: tag }),
+
+  addTag: (tag) => {
+    const trimmed = tag.trim();
+    if (!trimmed) return;
+    set((state) => {
+      if (state.allTags.includes(trimmed)) return state;
+      const allTags = [...state.allTags, trimmed].sort();
+      debouncedSave("library-tags", allTags);
+      return { allTags };
+    });
+  },
+
+  removeTag: (tag) => {
+    // Remove from allTags list, and remove from all books that have it
+    set((state) => {
+      const allTags = state.allTags.filter((t) => t !== tag);
+      const books = state.books.map((b) =>
+        b.tags.includes(tag) ? { ...b, tags: b.tags.filter((t) => t !== tag) } : b,
+      );
+      debouncedSave("library-tags", allTags);
+      debouncedSave("library-books", books);
+      return { allTags, books, activeTag: state.activeTag === tag ? "" : state.activeTag };
+    });
+    // Persist book tag changes to DB
+    const books = get().books;
+    for (const b of books) {
+      db.updateBook(b.id, { tags: b.tags }).catch(() => {});
+    }
+  },
+
+  renameTag: (oldName, newName) => {
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === oldName) return;
+    set((state) => {
+      const allTags = state.allTags.map((t) => (t === oldName ? trimmed : t)).sort();
+      const books = state.books.map((b) =>
+        b.tags.includes(oldName)
+          ? { ...b, tags: b.tags.map((t) => (t === oldName ? trimmed : t)) }
+          : b,
+      );
+      debouncedSave("library-tags", allTags);
+      debouncedSave("library-books", books);
+      return { allTags, books, activeTag: state.activeTag === oldName ? trimmed : state.activeTag };
+    });
+    for (const b of get().books) {
+      if (b.tags.includes(trimmed)) {
+        db.updateBook(b.id, { tags: b.tags }).catch(() => {});
+      }
+    }
+  },
+
+  addTagToBook: (bookId, tag) => {
+    set((state) => {
+      const books = state.books.map((b) =>
+        b.id === bookId && !b.tags.includes(tag) ? { ...b, tags: [...b.tags, tag] } : b,
+      );
+      // Ensure tag is in allTags
+      const allTags = state.allTags.includes(tag) ? state.allTags : [...state.allTags, tag].sort();
+      debouncedSave("library-books", books);
+      debouncedSave("library-tags", allTags);
+      return { books, allTags };
+    });
+    const book = get().books.find((b) => b.id === bookId);
+    if (book) db.updateBook(bookId, { tags: book.tags }).catch(() => {});
+  },
+
+  removeTagFromBook: (bookId, tag) => {
+    set((state) => {
+      const books = state.books.map((b) =>
+        b.id === bookId ? { ...b, tags: b.tags.filter((t) => t !== tag) } : b,
+      );
+      debouncedSave("library-books", books);
+      return { books };
+    });
+    const book = get().books.find((b) => b.id === bookId);
+    if (book) db.updateBook(bookId, { tags: book.tags }).catch(() => {});
   },
 }));
