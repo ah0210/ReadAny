@@ -106,6 +106,7 @@ export interface FoliateViewerHandle {
   goToHref: (href: string) => void;
   goToFraction: (fraction: number) => void;
   goToCFI: (cfi: string) => void;
+  goToIndex: (index: number) => void;
   // biome-ignore lint: foliate-js annotation format
   addAnnotation: (annotation: any, remove?: boolean) => void;
   // biome-ignore lint: foliate-js annotation format
@@ -189,6 +190,9 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
         },
         goToCFI: (cfi: string) => {
           viewRef.current?.goTo(cfi);
+        },
+        goToIndex: (index: number) => {
+          viewRef.current?.goTo(index);
         },
         addAnnotation: (annotation: unknown, remove?: boolean) => {
           viewRef.current?.addAnnotation(annotation, remove);

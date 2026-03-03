@@ -1,17 +1,17 @@
 /**
- * Markdown-aware chunker — splits content preserving structure
- * Default: 300 tokens target / 50 min / 20% overlap
+ * Segment-aware chunker — creates chunks directly from TextSegments
+ * Each chunk preserves precise CFI references for navigation.
  *
- * Supports optional TextSegment mapping from book-extractor
- * to record precise EPUB CFI positions for each chunk.
+ * Strategy: Group consecutive segments into chunks by token count,
+ * preserving the first segment's CFI as startCfi and last as endCfi.
  */
 import type { Chunk } from "../types";
 import type { TextSegment } from "./rag-types";
 
 export interface ChunkerConfig {
-  targetTokens: number; // default 300
-  minTokens: number; // default 50
-  overlapRatio: number; // default 0.2
+  targetTokens: number;
+  minTokens: number;
+  overlapRatio: number;
 }
 
 const DEFAULT_CONFIG: ChunkerConfig = {
@@ -20,108 +20,90 @@ const DEFAULT_CONFIG: ChunkerConfig = {
   overlapRatio: 0.2,
 };
 
-/** Split book content into chunks preserving markdown structure */
+/**
+ * Create chunks from segments with precise CFI mapping.
+ *
+ * Each segment has a CFI, so we group consecutive segments into chunks
+ * while preserving CFI boundaries.
+ */
 export function chunkContent(
-  content: string,
+  _content: string,
   bookId: string,
   chapterIndex: number,
   chapterTitle: string,
   config: ChunkerConfig = DEFAULT_CONFIG,
   segments?: TextSegment[],
 ): Chunk[] {
-  const sections = splitBySections(content);
+  if (!segments || segments.length === 0) {
+    return [];
+  }
+
   const chunks: Chunk[] = [];
-  let currentChunk = "";
+  let currentTexts: string[] = [];
   let currentTokens = 0;
+  let startCfi = "";
+  let endCfi = "";
 
-  for (const section of sections) {
-    const sectionTokens = estimateTokens(section);
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    const segText = seg.text.trim();
+    if (!segText) continue;
 
-    if (currentTokens + sectionTokens > config.targetTokens && currentTokens >= config.minTokens) {
-      chunks.push(createChunk(currentChunk, bookId, chapterIndex, chapterTitle, chunks.length, segments));
+    const segTokens = estimateTokens(segText);
 
-      // Apply overlap
+    if (currentTokens + segTokens > config.targetTokens && currentTokens >= config.minTokens && currentTexts.length > 0) {
+      chunks.push(createChunkFromSegments(
+        currentTexts.join("\n\n"),
+        bookId,
+        chapterIndex,
+        chapterTitle,
+        chunks.length,
+        startCfi,
+        endCfi,
+      ));
+
       const overlapTokens = Math.floor(currentTokens * config.overlapRatio);
-      currentChunk = getOverlapText(currentChunk, overlapTokens) + section;
-      currentTokens = estimateTokens(currentChunk);
+      const overlapResult = getOverlapSegments(currentTexts, segments, i, overlapTokens);
+      currentTexts = overlapResult.texts;
+      currentTokens = overlapResult.tokens;
+      startCfi = overlapResult.startCfi;
+      endCfi = seg.cfi;
+      currentTexts.push(segText);
+      currentTokens += segTokens;
     } else {
-      currentChunk += (currentChunk ? "\n\n" : "") + section;
-      currentTokens += sectionTokens;
+      if (currentTexts.length === 0) {
+        startCfi = seg.cfi;
+      }
+      currentTexts.push(segText);
+      currentTokens += segTokens;
+      endCfi = seg.cfi;
     }
   }
 
-  if (currentTokens >= config.minTokens) {
-    chunks.push(createChunk(currentChunk, bookId, chapterIndex, chapterTitle, chunks.length, segments));
+  if (currentTokens >= config.minTokens || (currentTexts.length > 0 && chunks.length === 0)) {
+    chunks.push(createChunkFromSegments(
+      currentTexts.join("\n\n"),
+      bookId,
+      chapterIndex,
+      chapterTitle,
+      chunks.length,
+      startCfi,
+      endCfi,
+    ));
   }
 
   return chunks;
 }
 
-/** Split content by markdown headers and paragraphs */
-function splitBySections(content: string): string[] {
-  return content
-    .split(/\n(?=#{1,6}\s)|\n\n+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
-/** Rough token estimation (~4 chars per token for English) */
-export function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
-}
-
-/**
- * Find the best matching CFI for a chunk by matching its text content
- * against the TextSegments extracted from the DOM.
- *
- * Strategy: find the first segment whose text appears in the chunk content
- * (as startCfi) and the last such segment (as endCfi).
- */
-function findCfiForChunk(
-  chunkContent: string,
-  segments: TextSegment[],
-): { startCfi: string; endCfi: string } {
-  if (!segments || segments.length === 0) {
-    return { startCfi: "", endCfi: "" };
-  }
-
-  let startCfi = "";
-  let endCfi = "";
-
-  // Normalize chunk text for matching (collapse whitespace)
-  const normalizedChunk = chunkContent.replace(/\s+/g, " ").trim();
-
-  for (const seg of segments) {
-    const normalizedSeg = seg.text.replace(/\s+/g, " ").trim();
-    if (!normalizedSeg || normalizedSeg.length < 2) continue;
-
-    // Check if this segment's text appears in the chunk
-    // Use a substring of the segment (first 40 chars) for fuzzy matching
-    // since chunker may have split or merged text differently
-    const matchText = normalizedSeg.slice(0, Math.min(40, normalizedSeg.length));
-    if (normalizedChunk.includes(matchText)) {
-      if (!startCfi) {
-        startCfi = seg.cfi;
-      }
-      endCfi = seg.cfi;
-    }
-  }
-
-  return { startCfi, endCfi };
-}
-
-function createChunk(
+function createChunkFromSegments(
   content: string,
   bookId: string,
   chapterIndex: number,
   chapterTitle: string,
   index: number,
-  segments?: TextSegment[],
+  startCfi: string,
+  endCfi: string,
 ): Chunk {
-  const { startCfi, endCfi } = segments
-    ? findCfiForChunk(content, segments)
-    : { startCfi: "", endCfi: "" };
-
   return {
     id: `${bookId}-${chapterIndex}-${index}`,
     bookId,
@@ -134,8 +116,35 @@ function createChunk(
   };
 }
 
-function getOverlapText(text: string, targetTokens: number): string {
+function getOverlapSegments(
+  currentTexts: string[],
+  segments: TextSegment[],
+  currentIndex: number,
+  targetTokens: number,
+): { texts: string[]; tokens: number; startCfi: string } {
   const targetChars = targetTokens * 4;
-  if (text.length <= targetChars) return text;
-  return text.slice(-targetChars);
+  let charCount = 0;
+  const overlapTexts: string[] = [];
+
+  for (let i = currentTexts.length - 1; i >= 0; i--) {
+    const text = currentTexts[i];
+    charCount += text.length;
+    overlapTexts.unshift(text);
+    if (charCount >= targetChars) break;
+  }
+
+  const segmentOffset = currentIndex - overlapTexts.length;
+  const startCfi = segmentOffset >= 0 && segments[segmentOffset]
+    ? segments[segmentOffset].cfi
+    : (segments[0]?.cfi || "");
+
+  return {
+    texts: overlapTexts,
+    tokens: estimateTokens(overlapTexts.join("\n\n")),
+    startCfi,
+  };
+}
+
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
 }

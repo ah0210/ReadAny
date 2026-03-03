@@ -940,15 +940,30 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   }, []);
 
   const handleNavigateToCitation = useCallback((citation: CitationPart) => {
-    // Validate CFI before attempting navigation
     if (!citation.cfi || citation.cfi.trim() === "") {
-      console.warn("Citation has no valid CFI, cannot navigate:", {
+      console.warn("Citation has no valid CFI, falling back to chapter index:", {
         chapterTitle: citation.chapterTitle,
         chapterIndex: citation.chapterIndex,
         text: citation.text.slice(0, 50),
       });
-      // TODO: Consider fallback navigation using chapter index
+      try {
+        foliateRef.current?.goToIndex(citation.chapterIndex);
+      } catch (error) {
+        console.error("Failed to navigate to chapter:", error, citation);
+      }
       return;
+    }
+
+    if (citation.cfi.startsWith("page:")) {
+      const pageNum = parseInt(citation.cfi.split(":")[1], 10);
+      if (!isNaN(pageNum)) {
+        try {
+          foliateRef.current?.goToIndex(pageNum - 1);
+        } catch (error) {
+          console.error("Failed to navigate to page:", error, citation);
+        }
+        return;
+      }
     }
 
     try {
