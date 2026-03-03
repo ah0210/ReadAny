@@ -115,8 +115,8 @@ export class TauriPlatformService implements IPlatformService {
   // ---- Network ----
 
   async fetch(url: string, options?: RequestInit): Promise<Response> {
-    // Use native fetch — Tauri v2 allows it via plugin-http or the default
-    return globalThis.fetch(url, options);
+    const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
+    return tauriFetch(url, options);
   }
 
   async createWebSocket(

@@ -1,11 +1,13 @@
 /**
  * Edge TTS — Free high-quality Microsoft Neural TTS via Edge browser's read-aloud WebSocket API.
  *
- * Uses @tauri-apps/plugin-websocket to set custom headers (User-Agent, Origin, Cookie)
+ * Uses IPlatformService.createWebSocket to set custom headers (User-Agent, Origin, Cookie)
  * that browser native WebSocket cannot set — required by the Edge TTS server.
  *
  * Audio format: audio-24khz-48kbitrate-mono-mp3 (MP3, 24kHz, 48kbps, mono).
  */
+
+import { getPlatformService } from "../services/platform";
 
 // ── Constants ──
 const EDGE_SPEECH_URL =
@@ -144,11 +146,10 @@ async function sha256Hex(input: string): Promise<string> {
 }
 
 async function generateSecMsGec(): Promise<string> {
-  // Use BigInt for full precision (ticks exceed Number.MAX_SAFE_INTEGER)
   let ticks = BigInt(Math.floor(Date.now() / 1000));
   ticks += WIN_EPOCH_OFFSET;
   ticks -= ticks % 300n;
-  ticks *= S_TO_NS / 100n; // Convert to 100-nanosecond intervals (Windows file time)
+  ticks *= S_TO_NS / 100n;
   const strToHash = `${ticks.toString()}${EDGE_API_TOKEN}`;
   return sha256Hex(strToHash);
 }
@@ -203,16 +204,7 @@ function genMessage(headers: Record<string, string>, content: string): string {
   return `${header}\r\n${content}`;
 }
 
-// ── Edge TTS WebSocket Client (using Tauri WebSocket plugin) ──
-
-// Cache the dynamic import so it's only loaded once
-let _TauriWebSocket: Awaited<typeof import("@tauri-apps/plugin-websocket")>["default"] | null = null;
-async function getTauriWebSocket() {
-  if (!_TauriWebSocket) {
-    _TauriWebSocket = (await import("@tauri-apps/plugin-websocket")).default;
-  }
-  return _TauriWebSocket;
-}
+// ── Edge TTS WebSocket Client (using IPlatformService) ──
 
 export interface EdgeTTSPayload {
   text: string;
@@ -223,13 +215,13 @@ export interface EdgeTTSPayload {
 }
 
 /**
- * Fetch audio from Edge TTS via Tauri WebSocket plugin.
- * The Tauri plugin allows setting custom headers (User-Agent, Origin, Cookie)
+ * Fetch audio from Edge TTS via IPlatformService.createWebSocket.
+ * The platform service allows setting custom headers (User-Agent, Origin, Cookie)
  * that browser native WebSocket cannot set.
  * Returns the accumulated MP3 audio as an ArrayBuffer.
  */
 export async function fetchEdgeTTSAudio(payload: EdgeTTSPayload): Promise<ArrayBuffer> {
-  const TauriWebSocket = await getTauriWebSocket();
+  const platform = getPlatformService();
 
   const connectId = randomHex(16);
   const secMsGec = await generateSecMsGec();
@@ -288,23 +280,21 @@ export async function fetchEdgeTTSAudio(payload: EdgeTTSPayload): Promise<ArrayB
 
   return new Promise(async (resolve, reject) => {
     try {
-      const ws = await TauriWebSocket.connect(url, { headers });
+      const ws = await platform.createWebSocket(url, { headers });
       let audioData = new ArrayBuffer(0);
 
-      const messageUnlisten = await ws.addListener((msg) => {
+      ws.onMessage((data) => {
         try {
-          if (msg.type === "Text") {
-            const text = msg.data as string;
-            if (text.includes("Path:turn.end") || text.includes("Path: turn.end")) {
-              ws.disconnect();
-              messageUnlisten();
+          if (typeof data === "string") {
+            if (data.includes("Path:turn.end") || data.includes("Path: turn.end")) {
+              ws.close();
               if (!audioData.byteLength) {
                 return reject(new Error("No audio data received from Edge TTS."));
               }
               return resolve(audioData);
             }
-          } else if (msg.type === "Binary") {
-            const bytes = new Uint8Array(msg.data as number[]);
+          } else {
+            const bytes = new Uint8Array(data);
             if (bytes.length < 2) return;
             const headerLength = (bytes[0] << 8) | bytes[1];
             if (bytes.length > headerLength + 2) {
@@ -320,8 +310,12 @@ export async function fetchEdgeTTSAudio(payload: EdgeTTSPayload): Promise<ArrayB
         }
       });
 
-      await ws.send(configMsg);
-      await ws.send(ssmlMsg);
+      ws.onError((error) => {
+        reject(new Error(`Edge TTS WebSocket error: ${error}`));
+      });
+
+      ws.send(configMsg);
+      ws.send(ssmlMsg);
     } catch (error) {
       reject(new Error(`Edge TTS WebSocket error: ${error}`));
     }
