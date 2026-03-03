@@ -71,7 +71,7 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: "ReadAny ${{ github.ref_name }}"
           releaseBody: "See ASSETS to download and install this version."
-          releaseDraft: false
+          releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
 
