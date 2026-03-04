@@ -825,6 +825,12 @@ export class Paginator extends HTMLElement {
       t: e.timeStamp,
       vx: 0,
       xy: 0,
+      // Track initial position for tap detection — only call preventDefault()
+      // once finger has moved beyond threshold, so pure taps still generate
+      // synthetic click events (needed for toolbar toggle on iOS).
+      startX: touch?.screenX,
+      startY: touch?.screenY,
+      didPreventDefault: false,
     };
   }
   #onTouchMove(e) {
@@ -836,8 +842,15 @@ export class Paginator extends HTMLElement {
       if (this.#touchScrolled) e.preventDefault();
       return;
     }
-    e.preventDefault();
+    // Only preventDefault once finger moves beyond a small threshold (10px).
+    // This preserves synthetic click generation for pure taps on iOS.
     const touch = e.changedTouches[0];
+    const totalDx = Math.abs(touch.screenX - (state.startX ?? touch.screenX));
+    const totalDy = Math.abs(touch.screenY - (state.startY ?? touch.screenY));
+    if (totalDx > 10 || totalDy > 10 || state.didPreventDefault) {
+      e.preventDefault();
+      state.didPreventDefault = true;
+    }
     const x = touch.screenX;
     const y = touch.screenY;
     const dx = state.x - x;

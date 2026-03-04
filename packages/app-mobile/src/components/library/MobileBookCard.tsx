@@ -2,8 +2,9 @@
  * MobileBookCard — Touch-optimized book card with cover, progress, tags, long-press menu
  */
 import type { Book } from "@readany/core/types";
+import { getPlatformService } from "@readany/core/services";
 import { Database, Hash, Loader2, Trash2 } from "lucide-react";
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 interface MobileBookCardProps {
@@ -29,11 +30,36 @@ export const MobileBookCard = memo(function MobileBookCard({
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [showActions, setShowActions] = useState(false);
+  const [resolvedCoverUrl, setResolvedCoverUrl] = useState<string | undefined>(undefined);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touchMoved = useRef(false);
 
+  // Resolve relative coverUrl to absolute asset URL at runtime.
+  // On iOS the sandbox path changes, so we must resolve dynamically.
+  useEffect(() => {
+    const raw = book.meta.coverUrl;
+    if (!raw) { setResolvedCoverUrl(undefined); return; }
+    // Already an absolute URL (http/https/asset) — use as-is
+    if (raw.startsWith("http") || raw.startsWith("asset") || raw.startsWith("blob")) {
+      setResolvedCoverUrl(raw);
+      return;
+    }
+    // Relative path — resolve via appDataDir
+    (async () => {
+      try {
+        const platform = getPlatformService();
+        const appData = await platform.getAppDataDir();
+        const { join } = await import("@tauri-apps/api/path");
+        const absPath = await join(appData, raw);
+        setResolvedCoverUrl(platform.convertFileSrc(absPath));
+      } catch {
+        setResolvedCoverUrl(undefined);
+      }
+    })();
+  }, [book.meta.coverUrl]);
+
   const progressPct = Math.round(book.progress * 100);
-  const hasCover = book.meta.coverUrl && !imageError;
+  const hasCover = resolvedCoverUrl && !imageError;
 
   const vecPct = vectorProgress
     ? vectorProgress.totalChunks > 0
@@ -78,9 +104,9 @@ export const MobileBookCard = memo(function MobileBookCard({
         {/* Cover — 28:41 aspect ratio */}
         <div className="book-cover-shadow relative flex aspect-[28/41] w-full items-end justify-center overflow-hidden rounded">
           {/* Cover image */}
-          {book.meta.coverUrl && (
+          {resolvedCoverUrl && (
             <img
-              src={book.meta.coverUrl}
+              src={resolvedCoverUrl}
               alt={book.meta.title}
               className={`absolute inset-0 h-full w-full rounded object-cover transition-opacity duration-300 ${
                 imageLoaded && !imageError ? "opacity-100" : "opacity-0"

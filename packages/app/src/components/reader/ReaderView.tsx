@@ -1156,6 +1156,14 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
               setShowTTS(false);
             }}
           />
+
+          {/* Always-visible thin progress bar at the very bottom */}
+          <div className="absolute bottom-0 left-0 right-0 z-20 h-[2px] bg-foreground/5">
+            <div
+              className="h-full bg-primary/30 transition-all duration-300 ease-out"
+              style={{ width: `${Math.round((readerTab?.progress ?? 0) * 100)}%` }}
+            />
+          </div>
         </div>
 
         {/* TOC overlay — floats above toolbar, content, and footer */}

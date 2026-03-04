@@ -117,13 +117,23 @@
     "noToc": "No table of contents",
     "noBookOpen": "No book open",
     "loadFailed": "Failed to load",
+    "settings": "Reading Settings",
+    "fontSize": "Font Size",
+    "lineHeight": "Line Height",
+    "fontTheme": "Font Theme",
+    "viewMode": "View Mode",
+    "paginated": "Paginated",
+    "scrollMode": "Scroll",
+    "paragraphSpacing": "Paragraph Spacing",
+    "pageMargin": "Page Margin",
+    "goBackLocation": "Go Back",
+    "noSearchResults": "No results",
     "loadingStage": {
       "reading": "Reading file...",
       "parsing": "Parsing structure...",
       "rendering": "Rendering pages..."
     },
-    "search": "Search",
-    "settings": "Settings"
+    "search": "Search"
   },
   "translation": {
     "translateTo": "Translate to {{lang}}",

@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { useLibraryStore } from "@/stores/library-store";
 import { MobileBookCard } from "./MobileBookCard";
@@ -134,10 +135,11 @@ export function LibraryPage() {
     }
   }, [importBooks]);
 
-  const handleOpen = useCallback((_book: Book) => {
-    // TODO: navigate to reader when Phase 2 is implemented
-    console.log("[LibraryPage] Open book:", _book.id);
-  }, []);
+  const navigate = useNavigate();
+
+  const handleOpen = useCallback((book: Book) => {
+    navigate(`/reader/${book.id}`);
+  }, [navigate]);
 
   const handleManageTags = useCallback((book: Book) => {
     setTagSheetBook(book);

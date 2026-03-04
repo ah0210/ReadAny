@@ -5,6 +5,7 @@ import { LibraryPage } from "@/components/library/LibraryPage";
 import { ChatPage } from "@/components/chat/ChatPage";
 import { NotesPage } from "@/components/notes/NotesPage";
 import { ProfilePage } from "@/components/profile/ProfilePage";
+import { MobileReaderView } from "@/components/reader/MobileReaderView";
 
 export default function App() {
   return (
@@ -17,6 +18,9 @@ export default function App() {
           <Route path="/notes" element={<NotesPage />} />
           <Route path="/profile" element={<ProfilePage />} />
         </Route>
+
+        {/* Reader — full screen, no tab bar */}
+        <Route path="/reader/:bookId" element={<MobileReaderView />} />
 
         {/* Default redirect */}
         <Route path="*" element={<Navigate to="/library" replace />} />

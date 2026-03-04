@@ -22,8 +22,8 @@ export interface LibraryState {
 
   loadBooks: () => Promise<void>;
   setBooks: (books: Book[]) => void;
-  addBook: (book: Book) => void;
-  removeBook: (bookId: string) => void;
+  addBook: (book: Book) => Promise<void>;
+  removeBook: (bookId: string) => Promise<void>;
   updateBook: (bookId: string, updates: Partial<Book>) => void;
   setFilter: (filter: Partial<LibraryFilter>) => void;
   setViewMode: (mode: LibraryViewMode) => void;
@@ -38,24 +38,77 @@ export interface LibraryState {
   removeTagFromBook: (bookId: string, tag: string) => void;
 }
 
-/** Save cover image to appData and return a URL usable by <img> */
-async function saveCoverToAppData(bookId: string, coverBlob: Blob): Promise<string> {
+/**
+ * Resolve a relative path (e.g. "books/xxx.epub") to an absolute path under appDataDir.
+ * On iOS the absolute appDataDir path changes every reinstall, so we must NEVER persist it.
+ */
+async function resolveAppPath(relativePath: string): Promise<string> {
   const platform = getPlatformService();
   const appData = await platform.getAppDataDir();
-  const coversDir = await platform.joinPath(appData, "covers");
+  return platform.joinPath(appData, relativePath);
+}
 
-  try {
-    await platform.mkdir(coversDir);
-  } catch {
-    // Directory may already exist
-  }
+/** Ensure a directory exists under appDataDir */
+async function ensureAppSubDir(subDir: string): Promise<void> {
+  const platform = getPlatformService();
+  const absDir = await resolveAppPath(subDir);
+  try { await platform.mkdir(absDir); } catch { /* may exist */ }
+}
+
+/**
+ * Save cover image to appData. Returns a RELATIVE path (e.g. "covers/{bookId}.jpg").
+ * The caller must resolve to absolute path when needed for display.
+ */
+async function saveCoverToAppData(bookId: string, coverBlob: Blob): Promise<string> {
+  const platform = getPlatformService();
+  await ensureAppSubDir("covers");
 
   const ext = coverBlob.type.includes("png") ? "png" : "jpg";
-  const coverPath = await platform.joinPath(coversDir, `${bookId}.${ext}`);
+  const relativePath = `covers/${bookId}.${ext}`;
+  const absPath = await resolveAppPath(relativePath);
   const arrayBuffer = await coverBlob.arrayBuffer();
-  await platform.writeFile(coverPath, new Uint8Array(arrayBuffer));
+  await platform.writeFile(absPath, new Uint8Array(arrayBuffer));
 
-  return platform.convertFileSrc(coverPath);
+  return relativePath;
+}
+
+/**
+ * Copy book file into appDataDir/books/ so it persists across app restarts.
+ * Returns a RELATIVE path (e.g. "books/{bookId}.epub") — never store absolute paths!
+ *
+ * On iOS, file-picker paths are temporary and lose access after restart.
+ * Also, appDataDir absolute path changes between reinstalls.
+ *
+ * Strategy (following readest):
+ *   1. Try Tauri native `copyFile` first — fastest, avoids JS memory issues.
+ *   2. If that fails (e.g. iOS security-scoped resource), fallback to readFile → writeFile.
+ */
+async function copyBookToAppData(
+  bookId: string,
+  ext: string,
+  srcPath: string,
+): Promise<{ relativePath: string; fileBytes: Uint8Array }> {
+  const platform = getPlatformService();
+  await ensureAppSubDir("books");
+
+  const relativePath = `books/${bookId}.${ext}`;
+  const absPath = await resolveAppPath(relativePath);
+
+  let fileBytes: Uint8Array;
+  try {
+    const { copyFile } = await import("@tauri-apps/plugin-fs");
+    console.log("[copyBookToAppData] Trying native copyFile:", srcPath, "→", absPath);
+    await copyFile(srcPath, absPath);
+    console.log("[copyBookToAppData] Native copy succeeded");
+    fileBytes = await platform.readFile(absPath);
+  } catch (err) {
+    console.warn("[copyBookToAppData] Native copyFile failed:", err, "— falling back");
+    fileBytes = await platform.readFile(srcPath);
+    await platform.writeFile(absPath, fileBytes);
+    console.log("[copyBookToAppData] Fallback succeeded, wrote", fileBytes.length, "bytes");
+  }
+
+  return { relativePath, fileBytes };
 }
 
 /** Generate PDF cover by rendering the first page to canvas */
@@ -153,19 +206,34 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   setBooks: (books) => set({ books }),
 
-  addBook: (book) => {
+  addBook: async (book) => {
     set((state) => ({ books: [...state.books, book] }));
-    db.insertBook(book).catch((err) =>
-      console.error("Failed to insert book into database:", err),
-    );
+    try {
+      await db.initDatabase();
+      await db.insertBook(book);
+    } catch (err) {
+      console.error("Failed to insert book into database:", err);
+    }
     debouncedSave("library-books", get().books);
   },
 
-  removeBook: (bookId) => {
+  removeBook: async (bookId) => {
+    const bookToRemove = get().books.find((b) => b.id === bookId);
     set((state) => ({ books: state.books.filter((b) => b.id !== bookId) }));
-    db.deleteBook(bookId).catch((err) =>
-      console.error("Failed to delete book from database:", err),
-    );
+    try {
+      await db.initDatabase();
+      await db.deleteBook(bookId);
+    } catch (err) {
+      console.error("Failed to delete book from database:", err);
+    }
+    // Clean up the copied book file from appDataDir
+    if (bookToRemove?.filePath) {
+      try {
+        const { remove } = await import("@tauri-apps/plugin-fs");
+        const absPath = await resolveAppPath(bookToRemove.filePath);
+        await remove(absPath);
+      } catch { /* file may not exist */ }
+    }
     debouncedSave("library-books", get().books);
   },
 
@@ -187,7 +255,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   importBooks: async (filePaths) => {
     set({ isImporting: true });
     try {
-      const platform = getPlatformService();
       const { DocumentLoader } = await import("@/lib/reader/document-loader");
 
       for (const filePath of filePaths) {
@@ -203,7 +270,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           let coverUrl: string | undefined;
           const bookId = crypto.randomUUID();
 
-          const fileBytes = await platform.readFile(filePath);
+          // Copy file into app sandbox first — this must happen while
+          // the temporary file-picker permission is still active
+          const { relativePath, fileBytes } = await copyBookToAppData(bookId, ext || "epub", filePath);
+
           const fileName = filePath.split("/").pop() || "book";
           const blob = new Blob([fileBytes]);
           const file = new File([blob], fileName, { type: blob.type || "application/octet-stream" });
@@ -249,7 +319,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
           const book: Book = {
             id: bookId,
-            filePath,
+            filePath: relativePath,
             format,
             meta: { title, author, coverUrl },
             progress: 0,
@@ -259,7 +329,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             addedAt: Date.now(),
             lastOpenedAt: Date.now(),
           };
-          get().addBook(book);
+          await get().addBook(book);
         } catch (err) {
           console.error(`Failed to import ${filePath}:`, err);
         }

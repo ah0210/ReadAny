@@ -117,13 +117,23 @@
     "noToc": "暂无目录",
     "noBookOpen": "未打开书籍",
     "loadFailed": "加载失败",
+    "settings": "阅读设置",
+    "fontSize": "字号",
+    "lineHeight": "行高",
+    "fontTheme": "字体主题",
+    "viewMode": "阅读模式",
+    "paginated": "翻页",
+    "scrollMode": "滚动",
+    "paragraphSpacing": "段落间距",
+    "pageMargin": "页边距",
+    "goBackLocation": "返回上一位置",
+    "noSearchResults": "无结果",
     "loadingStage": {
       "reading": "正在读取文件...",
       "parsing": "正在解析结构...",
       "rendering": "正在渲染页面..."
     },
-    "search": "搜索",
-    "settings": "设置"
+    "search": "搜索"
   },
   "translation": {
     "translateTo": "翻译为 {{lang}}",
