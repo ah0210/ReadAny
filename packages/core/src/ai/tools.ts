@@ -44,9 +44,6 @@ function createRagSearchTool(bookId: string): ToolDefinition {
 
       const results = await search(query);
 
-      console.log(`[ragSearch] Found ${results.length} results, first 3 CFIs:`,
-        results.slice(0, 3).map(r => ({ chapter: r.chunk.chapterTitle, startCfi: r.chunk.startCfi })));
-
       return {
         results: results.map((r) => ({
           chapter: r.chunk.chapterTitle,
@@ -500,19 +497,6 @@ function createAddCitationTool(bookId: string): ToolDefinition {
       const chapterIndex = args.chapterIndex as number;
       const cfi = (args.cfi as string) || "";
       const quotedText = (args.quotedText as string).slice(0, 200);
-
-      // 警告：CFI 为空
-      if (!cfi || cfi.trim() === "") {
-        console.warn(`[addCitation] WARNING: Empty CFI provided! This citation will not support precise navigation.`,
-          { chapterTitle, chapterIndex, quotedText: quotedText.slice(0, 50) });
-      }
-
-      console.log(`[addCitation] Called with:`, {
-        chapterTitle,
-        chapterIndex,
-        cfi: cfi || "(EMPTY - NO NAVIGATION)",
-        quotedText: quotedText.slice(0, 50)
-      });
 
       // Return citation metadata
       // The message pipeline will assign citation numbers and create CitationPart objects

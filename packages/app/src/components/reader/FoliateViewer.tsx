@@ -480,20 +480,7 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
       const detail = (event as CustomEvent).detail;
       const { draw, annotation, doc, range } = detail;
 
-      console.log("[drawAnnotationHandler] Called with:", {
-        hasDrawFunction: !!draw,
-        annotation: annotation ? {
-          value: annotation.value,
-          type: annotation.type,
-          color: annotation.color,
-          hasNote: !!annotation.note
-        } : null,
-        hasDoc: !!doc,
-        hasRange: !!range
-      });
-
       if (!draw || !annotation) {
-        console.warn("[drawAnnotationHandler] Missing draw or annotation, returning early");
         return;
       }
 
@@ -512,8 +499,6 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
       };
 
       const hexColor = colorMap[color] || colorMap.yellow;
-
-      console.log("[drawAnnotationHandler] Color mapping:", { color, hexColor });
 
       // Check writing mode for vertical text support
       let writingMode = "horizontal-tb";

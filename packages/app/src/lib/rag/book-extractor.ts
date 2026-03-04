@@ -50,11 +50,8 @@ export async function extractBookChapters(filePath: string): Promise<ChapterData
 
       const title = tocMap.get(i) ?? tocMap.get(section.href ?? "") ?? `Section ${i + 1}`;
       const baseCfi = section.cfi || CFI.fake.fromIndex(i);
-      console.log(`[book-extractor] Section ${i} ("${title}"): section.cfi="${section.cfi}", baseCfi="${baseCfi}"`);
 
       const segments = extractSegmentsWithCfi(doc, baseCfi);
-      console.log(`[book-extractor] Section ${i} extracted ${segments.length} segments, first 3 CFIs:`, 
-        segments.slice(0, 3).map(s => ({ text: s.text.slice(0, 30), cfi: s.cfi })));
 
       if (segments.length === 0) continue;
 
@@ -80,7 +77,7 @@ function extractSegmentsWithCfi(doc: Document, baseCfi: string): TextSegment[] {
   const body = doc.body;
   if (!body) return segments;
 
-  const blockSelector = "p, h1, h2, h3, h4, h5, h6, li, blockquote, dd, dt, figcaption, pre, td, th, div, section, article, header, footer, main, aside, nav";
+  const blockSelector = "p, h1, h2, h3, h4, h5, h6, li, blockquote, dd, dt, figcaption, pre, td, th";
   const blocks = body.querySelectorAll(blockSelector);
 
   if (blocks.length === 0) {
@@ -96,17 +93,47 @@ function extractSegmentsWithCfi(doc: Document, baseCfi: string): TextSegment[] {
     if (!text || text.length < 2) continue;
 
     try {
+      const textNodes = getTextNodes(block);
+      if (textNodes.length === 0) {
+        segments.push({ text, cfi: baseCfi });
+        continue;
+      }
+
       const range = doc.createRange();
-      range.selectNodeContents(block);
+      const firstNode = textNodes[0];
+      const lastNode = textNodes[textNodes.length - 1];
+      
+      range.setStart(firstNode, 0);
+      range.setEnd(lastNode, lastNode.length);
+      
       const rangeCfi = CFI.fromRange(range);
       const fullCfi = CFI.joinIndir(baseCfi, rangeCfi);
       segments.push({ text, cfi: fullCfi });
-    } catch {
+    } catch (e) {
+      console.warn("[extractSegmentsWithCfi] Failed to create CFI for block:", text.slice(0, 50), e);
       segments.push({ text, cfi: baseCfi });
     }
   }
 
   return segments;
+}
+
+function getTextNodes(element: Element): Text[] {
+  const walker = element.ownerDocument.createTreeWalker(
+    element,
+    NodeFilter.SHOW_TEXT,
+    null
+  );
+
+  const nodes: Text[] = [];
+  let node: Text | null;
+  while ((node = walker.nextNode() as Text | null)) {
+    if (node.textContent && node.textContent.trim()) {
+      nodes.push(node);
+    }
+  }
+
+  return nodes;
 }
 
 function extractBlockText(block: Element): string {

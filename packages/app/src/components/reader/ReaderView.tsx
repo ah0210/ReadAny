@@ -969,23 +969,37 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     console.log("[handleNavigateToCitation] Citation clicked:", citation);
 
     try {
-      // Try adding annotation BEFORE navigation
-      // This way it will be drawn when the section renders
-      console.log("[handleNavigateToCitation] Adding annotation before navigation");
-      foliateRef.current?.addAnnotation({
-        value: citation.cfi,
-        type: "highlight",
-        color: "pink", // Use pink for better visibility
-      });
-
       console.log("[handleNavigateToCitation] Navigating to CFI:", citation.cfi);
       foliateRef.current?.goToCFI(citation.cfi);
 
-      // Remove the annotation after 3 seconds
-      setTimeout(() => {
-        console.log("[handleNavigateToCitation] Removing annotation for CFI:", citation.cfi);
-        foliateRef.current?.deleteAnnotation({ value: citation.cfi });
-      }, 3000);
+      const flashHighlight = () => {
+        let flashCount = 0;
+        const maxFlashes = 3;
+        const flashInterval = 500;
+
+        const doFlash = () => {
+          if (flashCount >= maxFlashes) return;
+
+          foliateRef.current?.addAnnotation({
+            value: citation.cfi,
+            type: "highlight",
+            color: "orange",
+          });
+
+          setTimeout(() => {
+            foliateRef.current?.deleteAnnotation({ value: citation.cfi });
+            flashCount++;
+
+            if (flashCount < maxFlashes) {
+              setTimeout(doFlash, flashInterval);
+            }
+          }, flashInterval);
+        };
+
+        setTimeout(doFlash, 100);
+      };
+
+      flashHighlight();
     } catch (error) {
       console.error("[handleNavigateToCitation] Failed to navigate to citation:", error, citation);
     }
