@@ -2,7 +2,7 @@
  * MobileReaderToolbar — top bar with back, title, TOC, settings.
  * Slides in/out based on visibility.
  */
-import { ArrowLeft, List, Search, Settings } from "lucide-react";
+import { ArrowLeft, List, NotebookPen, Search, Settings } from "lucide-react";
 
 interface MobileReaderToolbarProps {
   visible: boolean;
@@ -12,6 +12,7 @@ interface MobileReaderToolbarProps {
   onToggleToc: () => void;
   onToggleSettings: () => void;
   onToggleSearch: () => void;
+  onToggleNotebook: () => void;
 }
 
 export function MobileReaderToolbar({
@@ -22,6 +23,7 @@ export function MobileReaderToolbar({
   onToggleToc,
   onToggleSettings,
   onToggleSearch,
+  onToggleNotebook,
 }: MobileReaderToolbarProps) {
   return (
     <header
@@ -48,6 +50,15 @@ export function MobileReaderToolbar({
               <p className="truncate text-xs text-white/70">{chapterTitle}</p>
             )}
           </div>
+
+          {/* Notebook */}
+          <button
+            type="button"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white active:bg-white/20"
+            onClick={onToggleNotebook}
+          >
+            <NotebookPen className="h-5 w-5" />
+          </button>
 
           {/* TOC */}
           <button

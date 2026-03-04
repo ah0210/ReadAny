@@ -7,6 +7,9 @@
 import { getPlatformService } from "@readany/core/services";
 import { throttle } from "@readany/core/utils/throttle";
 import { useReadingSession } from "@readany/core/hooks/use-reading-session";
+import { useAnnotationStore } from "@readany/core/stores/annotation-store";
+import { useNotebookStore } from "@readany/core/stores/notebook-store";
+import type { HighlightColor } from "@readany/core/types";
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -30,6 +33,7 @@ import { MobileReadSettings } from "./MobileReadSettings";
 import { MobileSelectionPopover, type BookSelection } from "./MobileSelectionPopover";
 import { MobileSearchBar } from "./MobileSearchBar";
 import { MobileChatPanel } from "@/components/chat/MobileChatPanel";
+import { MobileNotebookPanel } from "./MobileNotebookPanel";
 
 // --- File loading ---
 /**
@@ -63,7 +67,7 @@ async function loadFileAsBlob(filePath: string): Promise<Blob> {
     try {
       const fileBytes = await platform.readFile(absPath);
       console.log("[loadFileAsBlob] Loaded via readFile, size:", fileBytes.length);
-      return new Blob([fileBytes]);
+      return new Blob([fileBytes as unknown as BlobPart]);
     } catch (err2) {
       console.error("[loadFileAsBlob] readFile also failed:", err2);
       throw err2;
@@ -130,10 +134,22 @@ export function MobileReaderView() {
   const [showSettings, setShowSettings] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  const [showNotebook, setShowNotebook] = useState(false);
   const [totalPages, setTotalPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
   const [progress, setProgress] = useState(0);
   const [chapterTitle, setChapterTitle] = useState("");
+
+  // Annotation store
+  const {
+    highlights,
+    addHighlight,
+    removeHighlight,
+    loadAnnotations,
+  } = useAnnotationStore();
+
+  // Notebook store
+  const { startNewNote } = useNotebookStore();
 
   // Selection state
   const [selection, setSelection] = useState<BookSelection | null>(null);
@@ -183,13 +199,20 @@ export function MobileReaderView() {
 
   // Keep controls visible when panels are open
   useEffect(() => {
-    if (showToc || showSettings || showSearch) {
+    if (showToc || showSettings || showSearch || showNotebook) {
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
       setControlsVisible(true);
     } else {
       scheduleHide();
     }
-  }, [showToc, showSettings, showSearch, scheduleHide]);
+  }, [showToc, showSettings, showSearch, showNotebook, scheduleHide]);
+
+  // Load annotations when book opens
+  useEffect(() => {
+    if (bookId) {
+      loadAnnotations(bookId);
+    }
+  }, [bookId, loadAnnotations]);
 
   // Throttled progress save
   const throttledSaveProgress = useRef(
@@ -313,30 +336,55 @@ export function MobileReaderView() {
       setSelection(null);
       return;
     }
+
+    const existingHighlight = highlights.find(
+      (h) => h.cfi === detail.cfi || (h.text && h.text === detail.text),
+    );
+
     setSelection({
       text: detail.text,
       cfi: detail.cfi,
       range: detail.range,
       position: detail.position,
+      annotated: !!existingHighlight,
+      annotationId: existingHighlight?.id,
+      color: existingHighlight?.color,
     });
-  }, []);
+  }, [highlights]);
 
   const handleHighlight = useCallback(
     (color: string) => {
-      if (!selection) return;
-      // TODO: integrate with annotation store when available
-      console.log("[MobileReaderView] Highlight:", color, selection.cfi);
+      if (!selection || !bookId) return;
+
+      const highlightId = crypto.randomUUID();
+      addHighlight({
+        id: highlightId,
+        bookId,
+        cfi: selection.cfi,
+        text: selection.text,
+        color: color as HighlightColor,
+        chapterTitle,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
       setSelection(null);
     },
-    [selection],
+    [selection, bookId, chapterTitle, addHighlight],
   );
 
   const handleNote = useCallback(() => {
-    if (!selection) return;
-    // TODO: open note editor when available
-    console.log("[MobileReaderView] Note:", selection.text.slice(0, 50));
+    if (!selection || !bookId) return;
+
+    startNewNote({
+      text: selection.text,
+      cfi: selection.cfi,
+      chapterTitle,
+    });
+
     setSelection(null);
-  }, [selection]);
+    setShowNotebook(true);
+  }, [selection, bookId, chapterTitle, startNewNote]);
 
   const handleCopy = useCallback(() => {
     if (!selection) return;
@@ -377,10 +425,10 @@ export function MobileReaderView() {
 
   const handleRemoveHighlight = useCallback(() => {
     if (!selection?.annotationId) return;
-    // TODO: remove from annotation store
-    console.log("[MobileReaderView] Remove highlight:", selection.annotationId);
+
+    removeHighlight(selection.annotationId);
     setSelection(null);
-  }, [selection]);
+  }, [selection, removeHighlight]);
 
   const handleDismissSelection = useCallback(() => {
     setSelection(null);
@@ -484,6 +532,7 @@ export function MobileReaderView() {
           setControlsVisible(true);
           if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
         }}
+        onToggleNotebook={() => setShowNotebook(true)}
       />
 
       {/* Search Bar */}
@@ -611,8 +660,19 @@ export function MobileReaderView() {
         onNavigateToCitation={(citation) => {
           setShowChat(false);
           if (citation.cfi) {
-            viewerRef.current?.goToCfi(citation.cfi);
+            foliateRef.current?.goToCFI(citation.cfi);
           }
+        }}
+      />
+
+      {/* Notebook Panel */}
+      <MobileNotebookPanel
+        bookId={bookId!}
+        bookTitle={book?.meta.title || ""}
+        open={showNotebook}
+        onClose={() => setShowNotebook(false)}
+        onGoToCfi={(cfi) => {
+          foliateRef.current?.goToCFI(cfi);
         }}
       />
     </div>
