@@ -1,0 +1,84 @@
+---
+interface Props {
+  t: (key: string) => string
+}
+
+const { t } = Astro.props
+
+const communities = [
+  {
+    key: 'discussions',
+    label: t('community.discussions'),
+    desc: t('community.discussions.desc'),
+    icon: '💬',
+    href: 'https://github.com/codedogQBY/ReadAny/discussions',
+    available: true,
+  },
+  {
+    key: 'issues',
+    label: t('community.issues'),
+    desc: t('community.issues.desc'),
+    icon: '🐛',
+    href: 'https://github.com/codedogQBY/ReadAny/issues',
+    available: true,
+  },
+  {
+    key: 'discord',
+    label: t('community.discord'),
+    desc: t('community.discord.desc'),
+    icon: '🎮',
+    href: '#',
+    available: false,
+  },
+  {
+    key: 'twitter',
+    label: t('community.twitter'),
+    desc: t('community.twitter.desc'),
+    icon: '🐦',
+    href: '#',
+    available: false,
+  },
+  {
+    key: 'wechat',
+    label: t('community.wechat'),
+    desc: t('community.wechat.desc'),
+    icon: '💬',
+    href: '#',
+    available: false,
+  },
+]
+---
+
+<section id="community" class="py-20">
+  <div class="mx-auto max-w-6xl px-4">
+    <div class="text-center">
+      <h2 class="text-3xl font-bold tracking-tight sm:text-4xl">
+        {t('community.title')}
+      </h2>
+      <p class="mt-4 text-lg text-muted-foreground">
+        {t('community.subtitle')}
+      </p>
+    </div>
+    
+    <div class="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {communities.map((community) => (
+        <a
+          href={community.available ? community.href : '#'}
+          target={community.available ? '_blank' : undefined}
+          rel={community.available ? 'noopener noreferrer' : undefined}
+          class={`group flex flex-col items-center justify-center rounded-xl border border-border bg-card p-6 shadow-sm transition-all ${
+            community.available
+              ? 'hover:border-primary/50 hover:shadow-md'
+              : 'cursor-not-allowed opacity-60'
+          }`}
+        >
+          <span class="mb-3 text-4xl">{community.icon}</span>
+          <span class="font-medium">{community.label}</span>
+          <span class="mt-2 text-center text-sm text-muted-foreground">
+            {community.desc}
+          </span>
+        </a>
+      ))}
+    </div>
+  </div>
+</section>

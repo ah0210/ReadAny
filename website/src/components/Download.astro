@@ -1,0 +1,75 @@
+---
+interface Props {
+  t: (key: string) => string
+}
+
+const { t } = Astro.props
+
+const downloads = [
+  {
+    platform: 'mac-arm',
+    label: t('download.mac.arm'),
+    icon: '🍎',
+    href: 'https://github.com/codedogQBY/ReadAny/releases/latest',
+  },
+  {
+    platform: 'mac-intel',
+    label: t('download.mac.intel'),
+    icon: '🍎',
+    href: 'https://github.com/codedogQBY/ReadAny/releases/latest',
+  },
+  {
+    platform: 'windows',
+    label: t('download.windows'),
+    icon: '🪟',
+    href: 'https://github.com/codedogQBY/ReadAny/releases/latest',
+  },
+  {
+    platform: 'linux',
+    label: t('download.linux'),
+    icon: '🐧',
+    href: 'https://github.com/codedogQBY/ReadAny/releases/latest',
+  },
+]
+---
+
+<section id="download" class="bg-muted/30 py-20">
+  <div class="mx-auto max-w-6xl px-4">
+    <div class="text-center">
+      <h2 class="text-3xl font-bold tracking-tight sm:text-4xl">
+        {t('download.title')}
+      </h2>
+      <p class="mt-4 text-lg text-muted-foreground">
+        {t('download.subtitle')}
+      </p>
+    </div>
+    
+    <div class="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {downloads.map((download) => (
+        <a
+          href={download.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="group flex flex-col items-center justify-center rounded-xl border border-border bg-card p-6 shadow-sm transition-all hover:border-primary/50 hover:shadow-md"
+        >
+          <span class="mb-3 text-4xl">{download.icon}</span>
+          <span class="font-medium">{download.label}</span>
+          <span class="mt-2 text-xs text-muted-foreground">
+            {t('download.latest')}
+          </span>
+        </a>
+      ))}
+    </div>
+    
+    <div class="mt-8 text-center">
+      <a
+        href="https://github.com/codedogQBY/ReadAny/releases"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+      >
+        View all releases →
+      </a>
+    </div>
+  </div>
+</section>
