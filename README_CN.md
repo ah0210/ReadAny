@@ -34,12 +34,16 @@
 
 ---
 
+> 🚀 **v2.0 更新**: 移动端版本（iOS/Android）正在开发中！查看 [`packages/app-mobile/`](packages/app-mobile/)。
+
 <!-- TODO: 添加你的 Hero 截图或 GIF -->
 <!--
 <p align="center">
   <img src="docs/screenshots/hero.gif" alt="ReadAny Demo" width="100%">
 </p>
 -->
+
+> 📸 **应用截图**: 即将推出！正在录制演示 GIF。
 
 ## 为什么选择 ReadAny？
 
@@ -128,6 +132,24 @@
 2. **开始阅读** - 双击打开，沉浸体验
 3. **配置 AI**（可选）- 设置 → AI → 填入 API Key
 
+### 移动端版本（Beta）
+
+我们正在使用 Tauri 2 积极开发 iOS 和 Android 版本：
+
+```bash
+# 克隆并设置
+git clone https://github.com/codedogQBY/ReadAny.git
+cd ReadAny
+pnpm install
+
+# 运行移动端开发
+pnpm --filter @readany/app-mobile tauri ios dev
+# 或
+pnpm --filter @readany/app-mobile tauri android dev
+```
+
+设计详情见 [`MOBILE_UI_DESIGN.md`](packages/app-mobile/MOBILE_UI_DESIGN.md)。
+
 ### AI 配置
 
 | Provider | 获取方式 |
@@ -178,11 +200,12 @@ pnpm tauri build
 
 ## 开发路线
 
+- [x] **移动端支持** — 架构已重构，iOS/Android 开发中
 - [ ] 更多 AI 模型（Qwen、GLM、Llama）
 - [ ] PDF 重排/重渲染
 - [ ] 云同步
-- [ ] 移动端支持
 - [ ] 插件系统
+- [ ] 有声书（TTS）
 
 ---
 

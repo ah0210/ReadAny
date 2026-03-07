@@ -34,12 +34,16 @@
 
 ---
 
+> 🚀 **v2.0 Update**: Mobile version (iOS/Android) is now in development! Check [`packages/app-mobile/`](packages/app-mobile/).
+
 <!-- TODO: Add your hero screenshot or GIF here -->
 <!--
 <p align="center">
   <img src="docs/screenshots/hero.gif" alt="ReadAny Demo" width="100%">
 </p>
 -->
+
+> 📸 **Screenshots**: Coming soon! Currently working on capturing demo GIFs.
 
 ## Why ReadAny?
 
@@ -128,6 +132,24 @@
 2. **Start Reading** - Double-click to open, immersive experience
 3. **Configure AI** (Optional) - Settings → AI → Enter API Key
 
+### Mobile Version (Beta)
+
+We're actively developing iOS and Android versions using Tauri 2:
+
+```bash
+# Clone and setup
+git clone https://github.com/codedogQBY/ReadAny.git
+cd ReadAny
+pnpm install
+
+# Run mobile dev
+pnpm --filter @readany/app-mobile tauri ios dev
+# or
+pnpm --filter @readany/app-mobile tauri android dev
+```
+
+See [`MOBILE_UI_DESIGN.md`](packages/app-mobile/MOBILE_UI_DESIGN.md) for design details.
+
 ### AI Configuration
 
 | Provider | Get API Key |
@@ -178,11 +200,12 @@ pnpm tauri build
 
 ## Roadmap
 
+- [x] **Mobile support** — Architecture refactored, iOS/Android development in progress
 - [ ] More AI models (Qwen, GLM, Llama)
 - [ ] PDF reflow/re-render
 - [ ] Cloud sync
-- [ ] Mobile support
 - [ ] Plugin system
+- [ ] Audio ebook (TTS)
 
 ---
 
