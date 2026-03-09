@@ -1,20 +1,29 @@
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { useNavigation } from "@react-navigation/native";
+import { ChevronLeftIcon } from "../../components/ui/Icon";
+import { colors, fontSize, fontWeight, spacing } from "../../styles/theme";
 
 interface Props {
   title: string;
+  right?: React.ReactNode;
 }
 
-export function SettingsHeader({ title }: Props) {
+export function SettingsHeader({ title, right }: Props) {
   const nav = useNavigation();
 
   return (
     <View style={styles.header}>
-      <TouchableOpacity onPress={() => nav.goBack()} style={styles.back}>
-        <Text style={styles.backText}>‹ 返回</Text>
+      <TouchableOpacity
+        onPress={() => nav.goBack()}
+        style={styles.backBtn}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <ChevronLeftIcon size={20} color={colors.foreground} />
       </TouchableOpacity>
-      <Text style={styles.title}>{title}</Text>
-      <View style={styles.spacer} />
+      <Text style={styles.title} numberOfLines={1}>
+        {title}
+      </Text>
+      <View style={styles.rightSlot}>{right}</View>
     </View>
   );
 }
@@ -23,13 +32,26 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    gap: 12,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: 12,
+    paddingTop: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#27272a",
+    borderBottomColor: colors.border,
+    backgroundColor: colors.background,
   },
-  back: { width: 60 },
-  backText: { fontSize: 16, color: "#6366f1" },
-  title: { flex: 1, fontSize: 18, fontWeight: "600", color: "#fafafa", textAlign: "center" },
-  spacer: { width: 60 },
+  backBtn: {
+    padding: 4,
+    marginLeft: -4,
+  },
+  title: {
+    flex: 1,
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.semibold,
+    color: colors.foreground,
+  },
+  rightSlot: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
 });

@@ -1,20 +1,407 @@
-import { View, Text, StyleSheet } from "react-native";
+import { useCallback, useMemo } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useTranslation } from "react-i18next";
+import { useTTSStore } from "@readany/core/stores";
+import {
+  DASHSCOPE_VOICES,
+  EDGE_TTS_VOICES,
+  type TTSEngine,
+} from "@readany/core/tts";
 import { SettingsHeader } from "./SettingsHeader";
+import { colors, fontSize, fontWeight, spacing, radius } from "../../styles/theme";
 
-export function TTSSettingsScreen() {
+const ENGINES: { id: TTSEngine; labelKey: string }[] = [
+  { id: "edge", labelKey: "tts.edgeEngine" },
+  { id: "browser", labelKey: "tts.browser" },
+  { id: "dashscope", labelKey: "tts.tongyi" },
+];
+
+export default function TTSSettingsScreen() {
+  const { t } = useTranslation();
+  const { config, updateConfig, play, stop } = useTTSStore();
+
+  const edgeVoiceGroups = useMemo(() => {
+    const groups: Record<string, typeof EDGE_TTS_VOICES> = {};
+    for (const v of EDGE_TTS_VOICES) {
+      const lang = v.lang;
+      if (!groups[lang]) groups[lang] = [];
+      groups[lang].push(v);
+    }
+    return Object.entries(groups).sort(([a], [b]) => {
+      if (a.startsWith("zh")) return -1;
+      if (b.startsWith("zh")) return 1;
+      if (a.startsWith("en")) return -1;
+      if (b.startsWith("en")) return 1;
+      return a.localeCompare(b);
+    });
+  }, []);
+
+  const handlePreview = useCallback(() => {
+    stop();
+    setTimeout(() => play(t("tts.testText", "这是一段测试文本")), 100);
+  }, [play, stop, t]);
+
+  const previewBtn = (
+    <TouchableOpacity
+      style={styles.previewBtn}
+      onPress={handlePreview}
+      activeOpacity={0.7}
+    >
+      <Text style={styles.previewBtnText}>
+        ▶ {t("common.preview", "试听")}
+      </Text>
+    </TouchableOpacity>
+  );
+
   return (
-    <SafeAreaView style={styles.container}>
-      <SettingsHeader title="TTS 设置" />
-      <View style={styles.content}>
-        <Text style={styles.placeholder}>语音合成设置将在此处实现</Text>
-      </View>
+    <SafeAreaView style={styles.container} edges={["top"]}>
+      <SettingsHeader
+        title={t("tts.title", "TTS 设置")}
+        right={previewBtn}
+      />
+
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Engine Selection */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>
+            {t("tts.ttsEngine", "TTS 引擎")}
+          </Text>
+          <View style={styles.engineGrid}>
+            {ENGINES.map((eng) => {
+              const active = config.engine === eng.id;
+              return (
+                <TouchableOpacity
+                  key={eng.id}
+                  style={[
+                    styles.engineCard,
+                    active && styles.engineCardActive,
+                  ]}
+                  onPress={() => updateConfig({ engine: eng.id })}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.engineLabel,
+                      active && styles.engineLabelActive,
+                    ]}
+                  >
+                    {t(eng.labelKey, eng.id)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Voice Selection */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>
+            {t("tts.voiceSelect", "声音选择")}
+          </Text>
+
+          {config.engine === "edge" && (
+            <View style={styles.voiceList}>
+              {edgeVoiceGroups.map(([lang, voices]) => (
+                <View key={lang}>
+                  <View style={styles.voiceGroupHeader}>
+                    <Text style={styles.voiceGroupLabel}>{lang}</Text>
+                  </View>
+                  {voices.map((v) => (
+                    <TouchableOpacity
+                      key={v.id}
+                      style={styles.voiceItem}
+                      onPress={() => updateConfig({ edgeVoice: v.id })}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.voiceName,
+                          config.edgeVoice === v.id &&
+                            styles.voiceNameActive,
+                        ]}
+                      >
+                        {v.name}
+                      </Text>
+                      {config.edgeVoice === v.id && (
+                        <Text style={styles.micIcon}>♪</Text>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ))}
+            </View>
+          )}
+
+          {config.engine === "dashscope" && (
+            <>
+              <View style={styles.voiceList}>
+                {DASHSCOPE_VOICES.map((v) => (
+                  <TouchableOpacity
+                    key={v.id}
+                    style={styles.voiceItem}
+                    onPress={() => updateConfig({ dashscopeVoice: v.id })}
+                    activeOpacity={0.7}
+                  >
+                    <View>
+                      <Text
+                        style={[
+                          styles.voiceName,
+                          config.dashscopeVoice === v.id &&
+                            styles.voiceNameActive,
+                        ]}
+                      >
+                        {v.label}
+                      </Text>
+                      <Text style={styles.voiceSubLabel}>{v.id}</Text>
+                    </View>
+                    {config.dashscopeVoice === v.id && (
+                      <Text style={styles.micIcon}>♪</Text>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* DashScope API Key */}
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>
+                  {t("tts.apiKey", "DashScope API Key")}
+                </Text>
+                <TextInput
+                  style={styles.input}
+                  value={config.dashscopeApiKey || ""}
+                  onChangeText={(v) =>
+                    updateConfig({ dashscopeApiKey: v })
+                  }
+                  placeholder="sk-..."
+                  placeholderTextColor={colors.mutedForeground}
+                  secureTextEntry
+                />
+              </View>
+            </>
+          )}
+
+          {config.engine === "browser" && (
+            <View style={styles.voiceList}>
+              <View style={styles.emptyVoice}>
+                <Text style={styles.emptyVoiceText}>
+                  {t(
+                    "tts.browserNote",
+                    "浏览器 TTS 引擎使用系统自带语音合成",
+                  )}
+                </Text>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* Rate & Pitch */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>
+            {t("tts.params", "语音参数")}
+          </Text>
+          <View style={styles.paramsCard}>
+            {/* Rate */}
+            <View style={styles.paramRow}>
+              <View style={styles.paramHeader}>
+                <Text style={styles.paramLabel}>
+                  {t("tts.rate", "语速")}
+                </Text>
+                <Text style={styles.paramValue}>
+                  {config.rate.toFixed(1)}x
+                </Text>
+              </View>
+              <TextInput
+                style={styles.input}
+                keyboardType="decimal-pad"
+                value={String(config.rate)}
+                onChangeText={(v) => {
+                  const n = Number.parseFloat(v);
+                  if (!Number.isNaN(n) && n >= 0.5 && n <= 2)
+                    updateConfig({ rate: n });
+                }}
+                placeholder="0.5 - 2.0"
+                placeholderTextColor={colors.mutedForeground}
+              />
+            </View>
+
+            {/* Pitch (browser only) */}
+            {config.engine === "browser" && (
+              <View style={styles.paramRow}>
+                <View style={styles.paramHeader}>
+                  <Text style={styles.paramLabel}>
+                    {t("tts.pitch", "音调")}
+                  </Text>
+                  <Text style={styles.paramValue}>
+                    {config.pitch.toFixed(1)}
+                  </Text>
+                </View>
+                <TextInput
+                  style={styles.input}
+                  keyboardType="decimal-pad"
+                  value={String(config.pitch)}
+                  onChangeText={(v) => {
+                    const n = Number.parseFloat(v);
+                    if (!Number.isNaN(n) && n >= 0.5 && n <= 2)
+                      updateConfig({ pitch: n });
+                  }}
+                  placeholder="0.5 - 2.0"
+                  placeholderTextColor={colors.mutedForeground}
+                />
+              </View>
+            )}
+          </View>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0a0a0a" },
-  content: { flex: 1, justifyContent: "center", alignItems: "center" },
-  placeholder: { fontSize: 16, color: "#71717a" },
+  container: { flex: 1, backgroundColor: colors.background },
+  scroll: { flex: 1 },
+  scrollContent: { padding: spacing.lg, gap: 24 },
+  previewBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  previewBtnText: {
+    fontSize: fontSize.sm,
+    color: colors.primary,
+  },
+  section: { gap: 12 },
+  sectionTitle: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
+    color: colors.mutedForeground,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  engineGrid: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  engineCard: {
+    flex: 1,
+    alignItems: "center",
+    gap: 6,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    padding: 12,
+  },
+  engineCardActive: {
+    borderColor: colors.primary,
+    backgroundColor: "rgba(224,224,230,0.05)",
+  },
+  engineLabel: {
+    fontSize: fontSize.xs,
+    color: colors.foreground,
+  },
+  engineLabelActive: {
+    fontWeight: fontWeight.medium,
+    color: colors.primary,
+  },
+  voiceList: {
+    borderRadius: radius.xl,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: "hidden",
+    maxHeight: 240,
+  },
+  voiceGroupHeader: {
+    backgroundColor: colors.muted,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  voiceGroupLabel: {
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.medium,
+    color: colors.mutedForeground,
+  },
+  voiceItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 10,
+  },
+  voiceName: {
+    fontSize: fontSize.sm,
+    color: colors.foreground,
+  },
+  voiceNameActive: {
+    color: colors.primary,
+    fontWeight: fontWeight.medium,
+  },
+  voiceSubLabel: {
+    fontSize: fontSize.xs,
+    color: colors.mutedForeground,
+    marginTop: 2,
+  },
+  micIcon: {
+    fontSize: 14,
+    color: colors.primary,
+  },
+  emptyVoice: {
+    padding: 24,
+    alignItems: "center",
+  },
+  emptyVoiceText: {
+    fontSize: fontSize.sm,
+    color: colors.mutedForeground,
+    textAlign: "center",
+  },
+  fieldGroup: { gap: 6, marginTop: 12 },
+  fieldLabel: {
+    fontSize: fontSize.xs,
+    color: colors.mutedForeground,
+  },
+  input: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: fontSize.sm,
+    color: colors.foreground,
+  },
+  paramsCard: {
+    borderRadius: radius.xl,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    gap: 16,
+  },
+  paramRow: { gap: 8 },
+  paramHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  paramLabel: {
+    fontSize: fontSize.sm,
+    color: colors.foreground,
+  },
+  paramValue: {
+    fontSize: fontSize.sm,
+    color: colors.mutedForeground,
+    fontVariant: ["tabular-nums"],
+  },
 });
