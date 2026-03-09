@@ -5,6 +5,10 @@
     "dev": "pnpm --filter app dev",
     "build": "pnpm --filter app build",
     "tauri": "pnpm --filter app tauri",
+    "expo:start": "pnpm --filter @readany/app-expo start",
+    "expo:ios": "pnpm --filter @readany/app-expo ios",
+    "expo:android": "pnpm --filter @readany/app-expo android",
+    "expo:prebuild": "pnpm --filter @readany/app-expo prebuild",
     "lint": "biome check .",
     "lint:fix": "biome check --write ."
   },
