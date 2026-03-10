@@ -558,6 +558,15 @@
     window.setViewMode = function(m) { applySettings({ viewMode: m }); };
     window.addAnnotation = function(a) { if (view) view.addAnnotation(a); };
     window.removeAnnotation = function(a) { if (view) view.deleteAnnotation(a); };
+    window.setNavigationLocked = function(locked) { 
+      console.log('[WebView] setNavigationLocked called:', locked, 'view:', !!view, 'renderer:', !!view?.renderer);
+      if (view && view.renderer && 'navigationLocked' in view.renderer) {
+        view.renderer.navigationLocked = locked;
+        console.log('[WebView] navigationLocked set to:', locked);
+      } else {
+        console.log('[WebView] navigationLocked property not found on renderer');
+      }
+    };
 
     // ─── Polyfills ───
     Object.groupBy ??= function(iterable, fn) {

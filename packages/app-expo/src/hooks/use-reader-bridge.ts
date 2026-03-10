@@ -156,6 +156,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
 
   const setNavigationLocked = useCallback(
     (locked: boolean) => {
+      console.log("[ReaderBridge] setNavigationLocked:", locked);
       inject(`window.setNavigationLocked(${locked})`);
     },
     [inject],

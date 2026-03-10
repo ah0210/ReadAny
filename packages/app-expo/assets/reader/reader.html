@@ -73,7 +73,6 @@
     let searchGenerator = null;
     let searchResults = [];
     let searchIndex = 0;
-    let navigationLocked = false;
 
     // ─── Message handler from React Native ───
     window.addEventListener('message', async (e) => {
@@ -237,25 +236,6 @@
         });
 
         el.addEventListener('delete-annotation', () => { /* no-op */ });
-
-        el.addEventListener('show-annotation', (e) => {
-          const { value, index, range } = e.detail;
-          if (!value || !range) return;
-          const rect = range.getBoundingClientRect();
-          const contents = view.renderer?.getContents?.() || [];
-          const found = contents.find(c => c.index === index);
-          const iframe = found?.doc?.defaultView?.frameElement;
-          const iframeRect = iframe ? iframe.getBoundingClientRect() : { left: 0, top: 0 };
-          postToRN('show-annotation', {
-            value,
-            position: {
-              x: iframeRect.left + rect.left + rect.width / 2,
-              y: iframeRect.top + rect.top - 8,
-              selectionTop: iframeRect.top + rect.top,
-              selectionBottom: iframeRect.top + rect.bottom,
-            },
-          });
-        });
 
         container.appendChild(el);
         view = el;
@@ -438,22 +418,12 @@
 
       const LONG_HOLD_MS = 500;
       let holdTimer = null;
-      let selectionActive = false;
-
-      // Track selection state
-      doc.addEventListener('selectionchange', () => {
-        const sel = doc.getSelection();
-        selectionActive = sel && !sel.isCollapsed && sel.toString().trim().length > 0;
-      }, { passive: true });
 
       doc.addEventListener('touchstart', () => {
         holdTimer = setTimeout(() => { holdTimer = null; }, LONG_HOLD_MS);
       }, { passive: true });
 
       doc.addEventListener('click', (e) => {
-        // Don't handle tap if there's an active selection
-        if (selectionActive) return;
-        
         if (!holdTimer) return;
         clearTimeout(holdTimer);
         holdTimer = null;
@@ -573,14 +543,8 @@
     }
 
     // ─── Expose global functions for injectJavaScript ───
-    window.goNext = function() { 
-      if (navigationLocked) return;
-      if (view) view.next(); 
-    };
-    window.goPrev = function() { 
-      if (navigationLocked) return;
-      if (view) view.prev(); 
-    };
+    window.goNext = function() { if (view) view.next(); };
+    window.goPrev = function() { if (view) view.prev(); };
     window.goToHref = function(href) { if (view) view.goTo(href); };
     window.goToProgress = function(p) { if (view) view.goToFraction(p); };
     window.search = function(q) { handleSearch(q); };
@@ -594,7 +558,15 @@
     window.setViewMode = function(m) { applySettings({ viewMode: m }); };
     window.addAnnotation = function(a) { if (view) view.addAnnotation(a); };
     window.removeAnnotation = function(a) { if (view) view.deleteAnnotation(a); };
-    window.setNavigationLocked = function(locked) { navigationLocked = locked; };
+    window.setNavigationLocked = function(locked) { 
+      console.log('[WebView] setNavigationLocked called:', locked, 'view:', !!view, 'renderer:', !!view?.renderer);
+      if (view && view.renderer && 'navigationLocked' in view.renderer) {
+        view.renderer.navigationLocked = locked;
+        console.log('[WebView] navigationLocked set to:', locked);
+      } else {
+        console.log('[WebView] navigationLocked property not found on renderer');
+      }
+    };
 
     // ─── Polyfills ───
     Object.groupBy ??= function(iterable, fn) {
