@@ -47,6 +47,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
   // ─── Send commands to WebView ───
 
   const inject = useCallback((code: string) => {
+    console.log("[ReaderBridge] Injecting code:", code.substring(0, 200) + "...");
     webViewRef.current?.injectJavaScript(`${code}; true;`);
   }, []);
 
@@ -59,7 +60,9 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       lastLocation?: string;
       pageMargin?: number;
     }) => {
+      console.log("[ReaderBridge] openBook called with params:", { fileName: params.fileName, base64Length: params.base64?.length, lastLocation: params.lastLocation });
       const msg = JSON.stringify({ type: "openBook", ...params });
+      console.log("[ReaderBridge] Message JSON length:", msg.length);
       inject(`handleCommand(${msg})`);
     },
     [inject],
@@ -155,19 +158,23 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
   const handleMessage = useCallback((event: { nativeEvent: { data: string } }) => {
     try {
       const msg = JSON.parse(event.nativeEvent.data);
+      console.log("[ReaderBridge] Received message:", msg.type, msg);
       const cb = callbacksRef.current;
 
       switch (msg.type) {
         case "ready":
+          console.log("[ReaderBridge] WebView ready!");
           cb.onReady?.();
           break;
         case "loaded":
+          console.log("[ReaderBridge] Book loaded!");
           cb.onLoaded?.();
           break;
         case "relocate":
           cb.onRelocate?.(msg);
           break;
         case "toc":
+          console.log("[ReaderBridge] TOC ready, items:", msg.items?.length || 0);
           cb.onTocReady?.(msg.items || []);
           break;
         case "selection":
@@ -186,14 +193,17 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
           cb.onSearchComplete?.(msg.count || 0);
           break;
         case "error":
+          console.error("[ReaderBridge] Error from WebView:", msg.message);
           cb.onError?.(msg.message || "Unknown error");
           break;
         case "foliate-loaded":
-          // foliate-js modules loaded successfully
+          console.log("[ReaderBridge] foliate-js loaded in WebView");
           break;
+        default:
+          console.log("[ReaderBridge] Unknown message type:", msg.type);
       }
-    } catch {
-      // ignore parse errors
+    } catch (err) {
+      console.error("[ReaderBridge] Parse error:", err);
     }
   }, []);
 

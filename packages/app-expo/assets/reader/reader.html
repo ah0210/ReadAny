@@ -63,6 +63,7 @@
 
     const RN = window.ReactNativeWebView;
     function postToRN(type, data) {
+      console.log('[WebView] Sending to RN:', type, data);
       if (RN) RN.postMessage(JSON.stringify({ type, ...data }));
     }
 
@@ -77,8 +78,10 @@
     window.addEventListener('message', async (e) => {
       try {
         const msg = JSON.parse(e.data);
+        console.log('[WebView] Received from RN:', msg.type, msg);
         await handleCommand(msg);
       } catch (err) {
+        console.error('[WebView] Error in message handler:', err);
         postToRN('error', { message: String(err) });
       }
     });
@@ -87,13 +90,16 @@
     document.addEventListener('message', async (e) => {
       try {
         const msg = JSON.parse(e.data);
+        console.log('[WebView] Received from RN (iOS):', msg.type, msg);
         await handleCommand(msg);
       } catch (err) {
+        console.error('[WebView] Error in iOS message handler:', err);
         postToRN('error', { message: String(err) });
       }
     });
 
     async function handleCommand(msg) {
+      console.log('[WebView] Handling command:', msg.type);
       switch (msg.type) {
         case 'openBook':
           await openBook(msg);
@@ -141,6 +147,7 @@
 
     // ─── Book loading ───
     async function openBook(msg) {
+      console.log('[WebView] openBook called with:', msg.fileName, 'base64 length:', msg.base64?.length);
       const container = document.getElementById('reader-container');
       const loading = document.getElementById('loading');
 
@@ -150,6 +157,7 @@
         // msg.lastLocation = CFI to restore position
         let file;
         if (msg.base64) {
+          console.log('[WebView] Decoding base64...');
           // Decode base64 to blob
           const binary = atob(msg.base64);
           const bytes = new Uint8Array(binary.length);
@@ -157,6 +165,7 @@
           file = new File([bytes], msg.fileName || 'book.epub', {
             type: msg.mimeType || 'application/epub+zip'
           });
+          console.log('[WebView] File created, size:', file.size, 'bytes');
         } else if (msg.uri) {
           // Fetch from file URI
           const res = await fetch(msg.uri);
@@ -169,16 +178,21 @@
 
         // Dynamic import of foliate-js view.js to get makeBook
         // In the WebView, we load foliate-js from the bundled scripts
+        console.log('[WebView] Calling makeBook...');
+        console.log('[WebView] makeBook available?', typeof makeBook);
         const book = await makeBook(file);
+        console.log('[WebView] makeBook returned, book:', book?.metadata?.title);
         currentBook = book;
 
         // Create foliate-view element
+        console.log('[WebView] Creating foliate-view element...');
         const el = document.createElement('foliate-view');
         el.style.width = '100%';
         el.style.height = '100%';
 
         // Listen for events
         el.addEventListener('load', (e) => {
+          console.log('[WebView] foliate-view load event fired');
           const { doc, index } = e.detail;
           loading.classList.add('hidden');
           // Apply document styles
@@ -227,15 +241,19 @@
         view = el;
 
         // Open the book
+        console.log('[WebView] Calling el.open(book)...');
         await el.open(book);
+        console.log('[WebView] el.open(book) completed');
 
         // Send TOC
         if (book.toc) {
+          console.log('[WebView] Sending TOC, items:', book.toc.length);
           postToRN('toc', { items: convertTOC(book.toc) });
         }
 
         // Configure renderer
         const renderer = el.renderer;
+        console.log('[WebView] Renderer available?', !!renderer, 'isFixedLayout:', el.isFixedLayout);
         if (renderer && !el.isFixedLayout) {
           renderer.setAttribute('max-column-count', '1');
           renderer.setAttribute('max-block-size', '100%');
@@ -251,15 +269,20 @@
         // Navigate to last location
         if (msg.lastLocation) {
           try {
+            console.log('[WebView] Initializing with lastLocation:', msg.lastLocation);
             await el.init({ lastLocation: msg.lastLocation });
-          } catch {
+          } catch (err) {
+            console.warn('[WebView] Failed to init with lastLocation, going to start:', err);
             await el.goToFraction(0);
           }
         } else {
+          console.log('[WebView] Going to start of book');
           await el.goToFraction(0);
         }
+        console.log('[WebView] Book fully loaded and ready!');
 
       } catch (err) {
+        console.error('[WebView] Error in openBook:', err);
         loading.innerHTML = '<div class="error-text">' + escapeHtml(String(err)) + '</div>';
         postToRN('error', { message: String(err) });
       }
@@ -549,9 +572,6 @@
       for (const v of iterable) { const k = fn(v, i++); const l = map.get(k); if (l) l.push(v); else map.set(k, [v]); }
       return map;
     };
-
-    // Signal ready
-    postToRN('ready', {});
   </script>
 
   <script>
@@ -844,5 +864,10 @@ ${Qx}
                 `,b.head.appendChild(y)}a&&o>0&&setTimeout(()=>{p.classList.add("foliate-arrow-fadeout"),setTimeout(()=>{p.parentNode&&p.parentNode.removeChild(p)},1e3)},o)}return h.append(p),h}static copyImage([e],t={}){let{src:s}=t,i=ee("image"),{left:n,top:a,height:o,width:c}=e;return i.setAttribute("href",s),i.setAttribute("x",n),i.setAttribute("y",a),i.setAttribute("height",o),i.setAttribute("width",c),i}};di=new WeakMap,ui=new WeakMap;var j1=l=>{let e=0,t=s=>{if(s.id=e++,s.subitems)for(let i of s.subitems)t(i)};for(let s of l)t(s);return l},mw=l=>l.map(e=>e.subitems?.length?[e,mw(e.subitems)].flat():e).flat(),Ec=class{async init({toc:e,ids:t,splitHref:s,getFragment:i}){j1(e);let n=mw(e),a=new Map;for(let[c,h]of n.entries()){let[d,u]=await s(h?.href)??[],f={fragment:u,item:h};a.has(d)?a.get(d).items.push(f):a.set(d,{prev:n[c-1],items:[f]})}let o=new Map;for(let[c,h]of t.entries())a.has(h)?o.set(h,a.get(h)):o.set(h,o.get(t[c-1]));this.ids=t,this.map=o,this.getFragment=i}getProgress(e,t){if(!this.ids)return;let s=this.ids[e],i=this.map.get(s);if(!i)return null;let{prev:n,items:a}=i;if(!a)return n;if(!t||a.length===1&&!a[0].fragment)return a[0].item;let o=t.startContainer.getRootNode();for(let[c,{fragment:h}]of a.entries()){let d=this.getFragment(o,h);if(d&&t.comparePoint(d,0)>0)return a[c-1]?.item??n}return a[a.length-1].item}},ku,bw,Cu=class{constructor(e,t,s){A(this,ku);this.sizes=e.map(i=>i.linear!="no"&&i.size>0?i.size:0),this.sizePerLoc=t,this.sizePerTimeUnit=s,this.sizeTotal=this.sizes.reduce((i,n)=>i+n,0),this.sectionFractions=v(this,ku,bw).call(this)}getProgress(e,t,s=0){let{sizes:i,sizePerLoc:n,sizePerTimeUnit:a,sizeTotal:o}=this,c=i[e]??0,d=i.slice(0,e).reduce((p,w)=>p+w,0)+t*c,u=d+s*c,f=o-d,g=(1-t)*c;return{fraction:u/o,section:{current:e,total:i.length},location:{current:Math.floor(d/n),next:Math.floor(u/n),total:Math.ceil(o/n)},time:{section:g/a,total:f/a}}}getSection(e){if(e<=0)return[0,0];if(e>=1)return[this.sizes.length-1,1];e=e+Number.EPSILON;let{sizeTotal:t}=this,s=this.sectionFractions.findIndex(n=>n>e)-1;if(s<0)return[0,0];for(;!this.sizes[s];)s++;let i=(e-this.sectionFractions[s])/(this.sizes[s]/t);return[s,i]}};ku=new WeakSet,bw=function(){let{sizeTotal:e}=this,t=[0],s=0;for(let i of this.sizes)t.push((s+=i)/e);return t};var G1=(l,e)=>{let t=[];for(let s=e.currentNode;s;s=e.nextNode()){let i=l.comparePoint(s,0);if(i===0)t.push(s);else if(i>0)break}return t},V1=(l,e)=>{let t=[];for(let s=e.nextNode();s;s=e.nextNode())t.push(s);return t},W1=NodeFilter.SHOW_ELEMENT|NodeFilter.SHOW_TEXT|NodeFilter.SHOW_CDATA_SECTION,X1=l=>{if(l.nodeType===1){let e=l.tagName.toLowerCase();return e==="script"||e==="style"?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_SKIP}return NodeFilter.FILTER_ACCEPT},lg=function*(l,e,t){let s=l.commonAncestorContainer??l.body??l,i=document.createTreeWalker(s,W1,{acceptNode:t||X1}),a=(l.commonAncestorContainer?G1:V1)(l,i),o=a.map(h=>h.nodeValue),c=(h,d,u,f)=>{let g=document.createRange();return g.setStart(a[h],d),g.setEnd(a[u],f),g};for(let h of e(o,c))yield h};var vu="foliate-search:",aE=async l=>{let e=new Uint8Array(await l.slice(0,4).arrayBuffer());return e[0]===80&&e[1]===75&&e[2]===3&&e[3]===4},oE=async l=>{let e=new Uint8Array(await l.slice(0,5).arrayBuffer());return e[0]===37&&e[1]===80&&e[2]===68&&e[3]===70&&e[4]===45},lE=({name:l,type:e})=>e==="application/vnd.comicbook+zip"||l.endsWith(".cbz"),cE=({name:l,type:e})=>e==="application/x-fictionbook+xml"||l.endsWith(".fb2"),hE=({name:l,type:e})=>e==="application/x-zip-compressed-fb2"||l.endsWith(".fb2.zip")||l.endsWith(".fbz"),dE=async l=>{let{configure:e,ZipReader:t,BlobReader:s,TextWriter:i,BlobWriter:n}=await Promise.resolve().then(()=>(yy(),wy));e({useWebWorkers:!1});let o=await new t(new s(l)).getEntries(),c=new Map(o.map(g=>[g.filename,g])),h=g=>(p,...w)=>c.has(p)?g(c.get(p),...w):null,d=h(g=>g.getData(new i)),u=h((g,p)=>g.getData(new n(p)));return{entries:o,loadText:d,loadBlob:u,getSize:g=>c.get(g)?.uncompressedSize??0}},T1=async l=>l.isFile?l:(await Promise.all(Array.from(await new Promise((e,t)=>l.createReader().readEntries(s=>e(s),s=>t(s))),T1))).flat(),uE=async l=>{let e=await T1(l),t=await Promise.all(e.map(d=>new Promise((u,f)=>d.file(g=>u([g,d.fullPath]),g=>f(g))))),s=new Map(t.map(([d,u])=>[u.replace(`${l.fullPath}/`,""),d])),i=new TextDecoder,n=d=>d?i.decode(d):null,a=d=>s.get(d)?.arrayBuffer()??null;return{loadText:async d=>n(await a(d)),loadBlob:d=>s.get(d),getSize:d=>s.get(d)?.size??0}},Kb=class extends Error{},Zb=class extends Error{},Jb=class extends Error{},fE=async l=>{let e=await fetch(l);if(!e.ok)throw new Kb(`${e.status} ${e.statusText}`,{cause:e});return new File([await e.blob()],new URL(e.url).pathname)},ew=async l=>{typeof l=="string"&&(l=await fE(l));let e;if(l.isDirectory){let t=await uE(l),{EPUB:s}=await Promise.resolve().then(()=>(Gg(),jg));e=await new s(t).init()}else if(l.size)if(await aE(l)){let t=await dE(l);if(lE(l)){let{makeComicBook:s}=await Promise.resolve().then(()=>(Ty(),Ey));e=s(t,l)}else if(hE(l)){let{makeFB2:s}=await Promise.resolve().then(()=>(qg(),Xg)),{entries:i}=t,n=i.find(o=>o.filename.endsWith(".fb2")),a=await t.loadBlob((n??i[0]).filename);e=await s(a)}else{let{EPUB:s}=await Promise.resolve().then(()=>(Gg(),jg));e=await new s(t).init()}}else if(await oE(l)){let{makePDF:t}=await Promise.resolve().then(()=>(IA(),RA));e=await t(l)}else{let{isMOBI:t,MOBI:s}=await Promise.resolve().then(()=>(jA(),$A));if(await t(l)){let i=await Promise.resolve().then(()=>(JA(),ZA));e=await new s({unzlib:i.unzlibSync}).open(l)}else if(cE(l)){let{makeFB2:i}=await Promise.resolve().then(()=>(qg(),Xg));e=await i(l)}}else throw new Zb("File not found");if(!e)throw new Jb("File type not supported");return e},xc,Io,_u,Ds,sw=class sw{constructor(e,t,s={}){A(this,xc);A(this,Io);A(this,_u);A(this,Ds);m(this,Io,e),m(this,_u,t),m(this,Ds,s),r(this,Ds).hidden&&this.hide(),r(this,Io).addEventListener("mousemove",({screenX:i,screenY:n})=>{i===r(this,Ds).x&&n===r(this,Ds).y||(r(this,Ds).x=i,r(this,Ds).y=n,this.show(),r(this,xc)&&clearTimeout(r(this,xc)),t()&&m(this,xc,setTimeout(this.hide.bind(this),1e3)))},!1)}cloneFor(e){return new sw(e,r(this,_u),r(this,Ds))}hide(){r(this,Io).style.cursor="none",r(this,Ds).hidden=!0}show(){r(this,Io).style.removeProperty("cursor"),r(this,Ds).hidden=!1}};xc=new WeakMap,Io=new WeakMap,_u=new WeakMap,Ds=new WeakMap;var Qb=sw,Ns,Ve,tw=class extends EventTarget{constructor(){super(...arguments);A(this,Ns,[]);A(this,Ve,-1)}pushState(t){let s=r(this,Ns)[r(this,Ve)];s===t||s?.fraction&&s.fraction===t.fraction||(r(this,Ns)[++Lt(this,Ve)._]=t,r(this,Ns).length=r(this,Ve)+1,this.dispatchEvent(new Event("index-change")))}replaceState(t){let s=r(this,Ve);r(this,Ns)[s]=t}back(){let t=r(this,Ve);if(t<=0)return;let s={state:r(this,Ns)[t-1]};m(this,Ve,t-1),this.dispatchEvent(new CustomEvent("popstate",{detail:s})),this.dispatchEvent(new Event("index-change"))}forward(){let t=r(this,Ve);if(t>=r(this,Ns).length-1)return;let s={state:r(this,Ns)[t+1]};m(this,Ve,t+1),this.dispatchEvent(new CustomEvent("popstate",{detail:s})),this.dispatchEvent(new Event("index-change"))}get canGoBack(){return r(this,Ve)>0}get canGoForward(){return r(this,Ve)<r(this,Ns).length-1}clear(){m(this,Ns,[]),m(this,Ve,-1)}};Ns=new WeakMap,Ve=new WeakMap;var pE=l=>{if(!l)return{};try{let e=Intl.getCanonicalLocales(l)[0],t=new Intl.Locale(e),s=["zh","ja","kr"].includes(t.language),i=(t.getTextInfo?.()??t.textInfo)?.direction;return{canonical:e,locale:t,isCJK:s,direction:i}}catch(e){return console.warn(e),{}}},Jp,zn,oi,Gr,Hn,ji,Qp,bt,$i,C1,k1,L1,Zp,R1,I1,M1,Au=class extends HTMLElement{constructor(){super();A(this,bt);A(this,Jp,this.attachShadow({mode:"closed"}));A(this,zn);A(this,oi);A(this,Gr);A(this,Hn,new Map);A(this,ji,{type:"outline",options:{}});A(this,Qp,new Qb(this,()=>this.hasAttribute("autohide-cursor")));z(this,"isFixedLayout",!1);z(this,"lastLocation");z(this,"history",new tw);this.history.addEventListener("popstate",({detail:t})=>{let s=this.resolveNavigation(t.state);this.renderer.goTo(s)})}async open(t){if((typeof t=="string"||typeof t.arrayBuffer=="function"||t.isDirectory)&&(t=await ew(t)),this.book=t,this.language=pE(t.metadata?.language),t.splitTOCHref&&t.getTOCFragment){let s=t.sections.map(a=>a.id);m(this,zn,new Cu(t.sections,1500,1600));let i=t.splitTOCHref.bind(t),n=t.getTOCFragment.bind(t);m(this,oi,new Ec),await r(this,oi).init({toc:t.toc??[],ids:s,splitHref:i,getFragment:n}),m(this,Gr,new Ec),await r(this,Gr).init({toc:t.pageList??[],ids:s,splitHref:i,getFragment:n})}if(this.isFixedLayout=this.book.rendition?.layout==="pre-paginated",this.isFixedLayout?(await Promise.resolve().then(()=>(e1(),t1)),this.renderer=document.createElement("foliate-fxl")):(await Promise.resolve().then(()=>(g1(),p1)),this.renderer=document.createElement("foliate-paginator")),this.renderer.setAttribute("exportparts","head,foot,filter"),this.renderer.addEventListener("load",s=>v(this,bt,k1).call(this,s.detail)),this.renderer.addEventListener("relocate",s=>v(this,bt,C1).call(this,s.detail)),this.renderer.addEventListener("create-overlayer",s=>s.detail.attach(v(this,bt,R1).call(this,s.detail))),this.renderer.open(t),r(this,Jp).append(this.renderer),t.sections.some(s=>s.mediaOverlay)){let s=t.media.activeClass,i=t.media.playbackActiveClass;this.mediaOverlay=t.getMediaOverlay();let n;this.mediaOverlay.addEventListener("highlight",a=>{let o=this.resolveNavigation(a.detail.text);this.renderer.goTo(o).then(()=>{let{doc:c}=this.renderer.getContents().find(d=>d.index=o.index),h=o.anchor(c);h.classList.add(s),i&&h.ownerDocument.documentElement.classList.add(i),n=new WeakRef(h)})}),this.mediaOverlay.addEventListener("unhighlight",()=>{let a=n?.deref();a&&(a.classList.remove(s),i&&a.ownerDocument.documentElement.classList.remove(i))})}}close(){this.renderer?.destroy(),this.renderer?.remove(),m(this,zn,null),m(this,oi,null),m(this,Gr,null),m(this,Hn,new Map),this.lastLocation=null,this.history.clear(),this.tts=null,this.mediaOverlay=null}goToTextStart(){return this.goTo(this.book.landmarks?.find(t=>t.type.includes("bodymatter")||t.type.includes("text"))?.href??this.book.sections.findIndex(t=>t.linear!=="no"))}async init({lastLocation:t,showTextStart:s}){let i=t?this.resolveNavigation(t):null;i?(await this.renderer.goTo(i),this.history.pushState(t)):s?await this.goToTextStart():(this.history.pushState(0),await this.next())}async addAnnotation(t,s){let{value:i,indicatorType:n="outline",indicatorOptions:a={}}=t;if(i.startsWith(vu)){let u=i.replace(vu,""),{index:f,anchor:g}=await this.resolveNavigation(u),p=v(this,bt,Zp).call(this,f);if(p){let{overlayer:w,doc:b}=p;if(s){w.remove(i),w.remove(`${i}::underline`),w.remove(`${i}::tooltip`);return}let y=b?g(b):g,_;n==="arrow"?_=Un.arrow:_=Un.outline,w.add(i,y,_,a)}return}let{index:o,anchor:c}=await this.resolveNavigation(i),h=v(this,bt,Zp).call(this,o);if(h){let{overlayer:u,doc:f}=h;if(u.remove(i),u.remove(`${i}::underline`),u.remove(`${i}::tooltip`),s&&v(this,bt,$i).call(this,"delete-annotation",{value:i,doc:f}),!s){let g=f?c(f):c,p=(w,b,y)=>{let _=y?`${i}::${y}`:i;u.add(_,g,w,b)};v(this,bt,$i).call(this,"draw-annotation",{draw:p,annotation:t,doc:f,range:g})}}let d=r(this,oi).getProgress(o)?.label??"";return{index:o,label:d}}deleteAnnotation(t){return this.addAnnotation(t,!0)}async showAnnotation(t){let{value:s}=t,i=await this.goTo(s);if(i){let{index:n,anchor:a}=i,{doc:o}=v(this,bt,Zp).call(this,n),c=a(o);v(this,bt,$i).call(this,"show-annotation",{value:s,index:n,range:c})}}getCFI(t,s){let i=this.book.sections[t].cfi??ag.fromIndex(t);return s?cw(i,fw(s)):i}resolveCFI(t){if(this.book.resolveCFI)return this.book.resolveCFI(t);let s=Xr(t);return{index:ag.toIndex((s.parent??s).shift()),anchor:a=>Tu(a,s)}}resolveNavigation(t){try{if(typeof t=="number")return{index:t};if(typeof t.fraction=="number"){let[s,i]=r(this,zn).getSection(t.fraction);return{index:s,anchor:i}}return Sc.test(t)?this.resolveCFI(t):this.book.resolveHref(t)}catch(s){console.error(s),console.error(`Could not resolve target ${t}`)}}async goTo(t){t=decodeURIComponent(t);let s=this.resolveNavigation(t);try{return await this.renderer.goTo(s),this.history.pushState(t),s}catch(i){console.error(i),console.error(`Could not go to ${t}`)}}async goToFraction(t){let[s,i]=r(this,zn).getSection(t);await this.renderer.goTo({index:s,anchor:i}),this.history.pushState({fraction:t})}async select(t){try{let s=await this.resolveNavigation(t);await this.renderer.goTo({...s,select:!0}),this.history.pushState(t)}catch(s){console.error(s),console.error(`Could not go to ${t}`)}}deselect(){for(let{doc:t}of this.renderer.getContents())t.defaultView.getSelection().removeAllRanges()}getSectionFractions(){return(r(this,zn)?.sectionFractions??[]).map(t=>t+Number.EPSILON)}getProgressOf(t,s){let i=r(this,oi)?.getProgress(t,s),n=r(this,Gr)?.getProgress(t,s);return{tocItem:i,pageItem:n}}async getTOCItemOf(t){try{let{index:s,anchor:i}=await this.resolveNavigation(t),n=await this.book.sections[s].createDocument(),a=i(n),o=a instanceof Range,c=o?a:n.createRange();return o||c.selectNodeContents(a),r(this,oi).getProgress(s,c)}catch(s){console.error(s),console.error(`Could not get ${t}`)}}async prev(t){await this.renderer.prev(t)}async next(t){await this.renderer.next(t)}goLeft(){return this.book.dir==="rtl"?this.next():this.prev()}goRight(){return this.book.dir==="rtl"?this.prev():this.next()}async*search(t){this.clearSearch();let{searchMatcher:s}=await Promise.resolve().then(()=>(v1(),y1)),{query:i,index:n}=t,a=s(lg,{defaultLocale:this.language,...t}),o=n!=null?v(this,bt,I1).call(this,a,i,n):v(this,bt,M1).call(this,a,i),c=[];r(this,Hn).set(n,c);for await(let h of o)if(h.subitems){let d=h.subitems.map(({cfi:u})=>({value:vu+u}));r(this,Hn).set(h.index,d);for(let u of d){let f={...u,indicatorType:r(this,ji).type,indicatorOptions:r(this,ji).options};this.addAnnotation(f)}yield{label:r(this,oi).getProgress(h.index)?.label??"",subitems:h.subitems}}else{if(h.cfi){let d={value:vu+h.cfi};c.push(d);let u={...d,indicatorType:r(this,ji).type,indicatorOptions:r(this,ji).options};this.addAnnotation(u)}yield h}yield"done"}clearSearch(){for(let t of r(this,Hn).values())for(let s of t)this.deleteAnnotation(s);r(this,Hn).clear()}setSearchIndicator(t="outline",s={}){m(this,ji,{type:t,options:s})}async initTTS(t="word",s){let i=this.renderer.getContents()[0].doc;if(this.tts&&this.tts.doc===i)return;let{TTS:n}=await Promise.resolve().then(()=>(E1(),S1));this.tts=new n(i,lg,s||(a=>this.renderer.scrollToAnchor(a,!0)),t)}startMediaOverlay(){let{index:t}=this.renderer.getContents()[0];return this.mediaOverlay.start(t)}};Jp=new WeakMap,zn=new WeakMap,oi=new WeakMap,Gr=new WeakMap,Hn=new WeakMap,ji=new WeakMap,Qp=new WeakMap,bt=new WeakSet,$i=function(t,s,i){return this.dispatchEvent(new CustomEvent(t,{detail:s,cancelable:i}))},C1=function({reason:t,range:s,index:i,fraction:n,size:a}){let o=r(this,zn)?.getProgress(i,n,a)??{},c=r(this,oi)?.getProgress(i,s),h=r(this,Gr)?.getProgress(i,s),d=this.getCFI(i,s);this.lastLocation={...o,tocItem:c,pageItem:h,cfi:d,range:s},(t==="snap"||t==="page"||t==="scroll")&&this.history.replaceState(d),v(this,bt,$i).call(this,"relocate",this.lastLocation)},k1=function({doc:t,index:s}){var i,n;(i=t.documentElement).lang||(i.lang=this.language.canonical??""),this.language.isCJK||(n=t.documentElement).dir||(n.dir=this.language.direction??""),v(this,bt,L1).call(this,t,s),r(this,Qp).cloneFor(t.documentElement),v(this,bt,$i).call(this,"load",{doc:t,index:s})},L1=function(t,s){let{book:i}=this,n=i.sections[s];t.addEventListener("click",a=>{let o=a.target.closest("a[href]");if(!o)return;a.preventDefault();let c=o.getAttribute("href"),h=n?.resolveHref?.(c)??c;i?.isExternal?.(h)?Promise.resolve(v(this,bt,$i).call(this,"external-link",{a:o,href:h},!0)).then(d=>d?globalThis.open(h,"_blank"):null).catch(d=>console.error(d)):Promise.resolve(v(this,bt,$i).call(this,"link",{a:o,href:h},!0)).then(d=>d?this.goTo(h):null).catch(d=>console.error(d))})},Zp=function(t){return this.renderer.getContents().find(s=>s.index===t&&s.overlayer)},R1=function({doc:t,index:s}){let i=new Un;t.addEventListener("click",a=>{let[o,c]=i.hitTest(a);o&&!o.startsWith(vu)&&v(this,bt,$i).call(this,"show-annotation",{value:o,index:s,range:c})},!1);let n=r(this,Hn).get(s);if(n)for(let a of n){let o={...a,indicatorType:r(this,ji).type,indicatorOptions:r(this,ji).options};this.addAnnotation(o)}return v(this,bt,$i).call(this,"create-overlay",{index:s}),i},I1=async function*(t,s,i){let n=await this.book.sections[i].createDocument();for(let{range:a,excerpt:o}of t(n,s))yield{cfi:this.getCFI(i,a),excerpt:o}},M1=async function*(t,s){let{sections:i}=this.book;for(let[n,{createDocument:a}]of i.entries()){if(!a)continue;let o=await a(),c=Array.from(t(o,s),({range:d,excerpt:u})=>({cfi:this.getCFI(n,d),excerpt:u}));yield{progress:(n+1)/i.length},c.length&&(yield{index:n,subitems:c})}};customElements.get("foliate-view")||customElements.define("foliate-view",Au);window.makeBook=ew;window.Overlayer=Un;customElements.get("foliate-view")||customElements.define("foliate-view",Au);window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify({type:"foliate-loaded"}));})();
 
 </script>
+
+  <script>
+    // Signal ready AFTER foliate-js is loaded
+    postToRN('ready', {});
+  </script>
 </body>
 </html>

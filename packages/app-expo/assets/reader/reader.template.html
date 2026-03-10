@@ -63,6 +63,7 @@
 
     const RN = window.ReactNativeWebView;
     function postToRN(type, data) {
+      console.log('[WebView] Sending to RN:', type, data);
       if (RN) RN.postMessage(JSON.stringify({ type, ...data }));
     }
 
@@ -77,8 +78,10 @@
     window.addEventListener('message', async (e) => {
       try {
         const msg = JSON.parse(e.data);
+        console.log('[WebView] Received from RN:', msg.type, msg);
         await handleCommand(msg);
       } catch (err) {
+        console.error('[WebView] Error in message handler:', err);
         postToRN('error', { message: String(err) });
       }
     });
@@ -87,13 +90,16 @@
     document.addEventListener('message', async (e) => {
       try {
         const msg = JSON.parse(e.data);
+        console.log('[WebView] Received from RN (iOS):', msg.type, msg);
         await handleCommand(msg);
       } catch (err) {
+        console.error('[WebView] Error in iOS message handler:', err);
         postToRN('error', { message: String(err) });
       }
     });
 
     async function handleCommand(msg) {
+      console.log('[WebView] Handling command:', msg.type);
       switch (msg.type) {
         case 'openBook':
           await openBook(msg);
@@ -141,6 +147,7 @@
 
     // ─── Book loading ───
     async function openBook(msg) {
+      console.log('[WebView] openBook called with:', msg.fileName, 'base64 length:', msg.base64?.length);
       const container = document.getElementById('reader-container');
       const loading = document.getElementById('loading');
 
@@ -150,6 +157,7 @@
         // msg.lastLocation = CFI to restore position
         let file;
         if (msg.base64) {
+          console.log('[WebView] Decoding base64...');
           // Decode base64 to blob
           const binary = atob(msg.base64);
           const bytes = new Uint8Array(binary.length);
@@ -157,6 +165,7 @@
           file = new File([bytes], msg.fileName || 'book.epub', {
             type: msg.mimeType || 'application/epub+zip'
           });
+          console.log('[WebView] File created, size:', file.size, 'bytes');
         } else if (msg.uri) {
           // Fetch from file URI
           const res = await fetch(msg.uri);
@@ -169,16 +178,21 @@
 
         // Dynamic import of foliate-js view.js to get makeBook
         // In the WebView, we load foliate-js from the bundled scripts
+        console.log('[WebView] Calling makeBook...');
+        console.log('[WebView] makeBook available?', typeof makeBook);
         const book = await makeBook(file);
+        console.log('[WebView] makeBook returned, book:', book?.metadata?.title);
         currentBook = book;
 
         // Create foliate-view element
+        console.log('[WebView] Creating foliate-view element...');
         const el = document.createElement('foliate-view');
         el.style.width = '100%';
         el.style.height = '100%';
 
         // Listen for events
         el.addEventListener('load', (e) => {
+          console.log('[WebView] foliate-view load event fired');
           const { doc, index } = e.detail;
           loading.classList.add('hidden');
           // Apply document styles
@@ -227,15 +241,19 @@
         view = el;
 
         // Open the book
+        console.log('[WebView] Calling el.open(book)...');
         await el.open(book);
+        console.log('[WebView] el.open(book) completed');
 
         // Send TOC
         if (book.toc) {
+          console.log('[WebView] Sending TOC, items:', book.toc.length);
           postToRN('toc', { items: convertTOC(book.toc) });
         }
 
         // Configure renderer
         const renderer = el.renderer;
+        console.log('[WebView] Renderer available?', !!renderer, 'isFixedLayout:', el.isFixedLayout);
         if (renderer && !el.isFixedLayout) {
           renderer.setAttribute('max-column-count', '1');
           renderer.setAttribute('max-block-size', '100%');
@@ -251,15 +269,20 @@
         // Navigate to last location
         if (msg.lastLocation) {
           try {
+            console.log('[WebView] Initializing with lastLocation:', msg.lastLocation);
             await el.init({ lastLocation: msg.lastLocation });
-          } catch {
+          } catch (err) {
+            console.warn('[WebView] Failed to init with lastLocation, going to start:', err);
             await el.goToFraction(0);
           }
         } else {
+          console.log('[WebView] Going to start of book');
           await el.goToFraction(0);
         }
+        console.log('[WebView] Book fully loaded and ready!');
 
       } catch (err) {
+        console.error('[WebView] Error in openBook:', err);
         loading.innerHTML = '<div class="error-text">' + escapeHtml(String(err)) + '</div>';
         postToRN('error', { message: String(err) });
       }
@@ -549,11 +572,13 @@
       for (const v of iterable) { const k = fn(v, i++); const l = map.get(k); if (l) l.push(v); else map.set(k, [v]); }
       return map;
     };
-
-    // Signal ready
-    postToRN('ready', {});
   </script>
 
   <!-- __READANY_FOLIATE_BUNDLE_INSERT_POINT_7f3a9b2e__ -->
+
+  <script>
+    // Signal ready AFTER foliate-js is loaded
+    postToRN('ready', {});
+  </script>
 </body>
 </html>

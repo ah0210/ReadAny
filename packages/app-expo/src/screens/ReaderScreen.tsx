@@ -22,6 +22,8 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useTranslation } from "react-i18next";
 import { WebView } from "react-native-webview";
 import * as FileSystem from "expo-file-system/legacy";
+import { Asset } from "expo-asset";
+import { getPlatformService } from "@readany/core/services";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore, useAnnotationStore, useReadingSessionStore } from "@/stores";
@@ -45,8 +47,7 @@ import {
 } from "@/components/ui/Icon";
 import Svg, { Path } from "react-native-svg";
 
-// Read the bundled reader.html
-const READER_HTML = require("../../assets/reader/reader.html");
+const READER_HTML_ASSET = Asset.fromModule(require("../../assets/reader/reader.html"));
 
 type Props = NativeStackScreenProps<RootStackParamList, "Reader">;
 
@@ -164,8 +165,10 @@ export function ReaderScreen({ route, navigation }: Props) {
   const [toc, setToc] = useState<TOCItem[]>([]);
   const [bookTitle, setBookTitle] = useState("");
   const [webViewReady, setWebViewReady] = useState(false);
+  const [readerHtmlUri, setReaderHtmlUri] = useState<string | null>(null);
   const [currentCfi, setCurrentCfi] = useState("");
   const [selection, setSelection] = useState<SelectionEvent | null>(null);
+  const assetLoadedRef = useRef(false);
 
   // Settings
   const [settingFontSize, setSettingFontSize] = useState(16);
@@ -185,6 +188,27 @@ export function ReaderScreen({ route, navigation }: Props) {
   const { addHighlight, loadAnnotations, highlights } = useAnnotationStore();
 
   const book = useMemo(() => books.find((b) => b.id === bookId), [books, bookId]);
+
+  // Load reader HTML asset
+  useEffect(() => {
+    if (assetLoadedRef.current) return;
+    assetLoadedRef.current = true;
+    
+    const loadAsset = async () => {
+      try {
+        console.log("[ReaderScreen] Loading reader.html asset...");
+        const asset = READER_HTML_ASSET;
+        await asset.downloadAsync();
+        const uri = asset.localUri || asset.uri;
+        console.log("[ReaderScreen] Reader HTML asset loaded:", uri);
+        setReaderHtmlUri(uri);
+      } catch (err) {
+        console.error("[ReaderScreen] Failed to load reader.html asset:", err);
+        setError("Failed to load reader");
+      }
+    };
+    loadAsset();
+  }, []);
 
   // Reader bridge
   const bridge = useReaderBridge({
@@ -206,7 +230,7 @@ export function ReaderScreen({ route, navigation }: Props) {
         // Persist progress
         updateBook(bookId, {
           progress: detail.fraction ?? 0,
-          lastLocation: detail.cfi,
+          currentCfi: detail.cfi,
         });
       }
     },
@@ -262,19 +286,32 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   // When WebView is ready and book is available, send the open command
   useEffect(() => {
-    if (!webViewReady || !book?.filePath) return;
+    if (!webViewReady || !book?.filePath) {
+      console.log("[ReaderScreen] Waiting for WebView ready and book...", { webViewReady, bookPath: book?.filePath });
+      return;
+    }
 
     const loadBook = async () => {
+      console.log("[ReaderScreen] Starting to load book:", book.filePath);
       try {
+        // Resolve absolute path from relative path
+        const platform = getPlatformService();
+        const appData = await platform.getAppDataDir();
+        const absPath = await platform.joinPath(appData, book.filePath);
+        console.log("[ReaderScreen] Absolute path:", absPath);
+        
         // Read the book file and send as base64 for reliability
-        const base64 = await FileSystem.readAsStringAsync(book.filePath, {
+        console.log("[ReaderScreen] Reading file as base64...");
+        const base64 = await FileSystem.readAsStringAsync(absPath, {
           encoding: FileSystem.EncodingType.Base64,
         });
+        console.log("[ReaderScreen] File read complete, base64 length:", base64.length);
 
+        console.log("[ReaderScreen] Sending openBook command to WebView...");
         bridge.openBook({
           base64,
           fileName: book.filePath.split("/").pop() || "book.epub",
-          lastLocation: book.lastLocation || undefined,
+          lastLocation: book.currentCfi || undefined,
           pageMargin: settingPageMargin,
         });
 
@@ -284,7 +321,9 @@ export function ReaderScreen({ route, navigation }: Props) {
           foreground: colors.foreground,
           muted: colors.mutedForeground,
         });
+        console.log("[ReaderScreen] openBook command sent, waiting for response...");
       } catch (err: any) {
+        console.error("[ReaderScreen] Failed to load book:", err);
         setError(err.message || "Failed to load book file");
         setLoading(false);
       }
@@ -413,7 +452,7 @@ export function ReaderScreen({ route, navigation }: Props) {
     setSelection(null);
   }, []);
 
-  if (loading && !webViewReady) {
+  if (loading && !webViewReady && !readerHtmlUri) {
     return (
       <SafeAreaView style={[s.container, { backgroundColor: colors.background }]}>
         <View style={s.loadingWrap}>
@@ -437,16 +476,47 @@ export function ReaderScreen({ route, navigation }: Props) {
     );
   }
 
+  if (!readerHtmlUri) {
+    return (
+      <View style={s.container}>
+        <View style={s.loadingWrap}>
+          <ActivityIndicator size="large" color={colors.indigo} />
+          <Text style={s.loadingText}>{t("reader.loading", "加载阅读器...")}</Text>
+        </View>
+      </View>
+    );
+  }
+
   const percent = Math.round(progress * 100);
 
+  console.log("[ReaderScreen] Rendering WebView with URI:", readerHtmlUri);
+  
   return (
     <View style={s.container}>
       {/* WebView with foliate-js */}
       <WebView
         ref={bridge.webViewRef}
-        source={READER_HTML}
+        source={{ uri: readerHtmlUri }}
         style={s.webview}
         onMessage={bridge.handleMessage}
+        onError={(e) => {
+          console.error("[ReaderScreen] WebView error:", e.nativeEvent);
+        }}
+        onHttpError={(e) => {
+          console.error("[ReaderScreen] WebView HTTP error:", e.nativeEvent);
+        }}
+        onLoadStart={() => {
+          console.log("[ReaderScreen] WebView load start");
+        }}
+        onLoadEnd={() => {
+          console.log("[ReaderScreen] WebView load end");
+        }}
+        onLoadProgress={(e) => {
+          console.log("[ReaderScreen] WebView load progress:", e.nativeEvent.progress);
+        }}
+        onContentProcessDidTerminate={() => {
+          console.warn("[ReaderScreen] WebView content process terminated");
+        }}
         javaScriptEnabled
         domStorageEnabled
         allowFileAccess
