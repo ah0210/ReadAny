@@ -262,9 +262,11 @@ export function ReaderScreen({ route, navigation }: Props) {
       setToc(items);
     },
     onSelection: (detail: SelectionEvent) => {
+      console.log("[ReaderScreen] onSelection callback called:", detail.text);
       setSelection(detail);
     },
     onSelectionCleared: () => {
+      console.log("[ReaderScreen] onSelectionCleared callback called");
       setSelection(null);
     },
     onTap: () => {
@@ -385,6 +387,7 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   // Lock navigation when selection is active
   useEffect(() => {
+    console.log("[ReaderScreen] selection changed:", !!selection, selection?.text?.substring(0, 20));
     if (!webViewReady) return;
     bridge.setNavigationLocked(!!selection);
   }, [webViewReady, selection]);

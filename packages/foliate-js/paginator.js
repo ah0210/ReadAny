@@ -827,6 +827,17 @@ export class Paginator extends HTMLElement {
     });
   }
   #onTouchStart(e) {
+    // If navigation is locked (e.g., during text selection), don't track touch
+    if (this.#navigationLocked) return;
+    // Also check if there's an active selection in any iframe
+    // This handles the case where user drags selection handles
+    const contents = this.getContents?.() ?? [];
+    for (const { doc } of contents) {
+      const sel = doc?.getSelection?.();
+      if (sel && !sel.isCollapsed && sel.toString().trim()) {
+        return;
+      }
+    }
     const touch = e.changedTouches[0];
     this.#touchState = {
       x: touch?.screenX,
@@ -844,7 +855,15 @@ export class Paginator extends HTMLElement {
   }
   #onTouchMove(e) {
     const state = this.#touchState;
-    if (this.#navigationLocked || state.pinched) return;
+    if (this.#navigationLocked || state?.pinched) return;
+    // Also check if there's an active selection (user might be dragging handles)
+    const contents = this.getContents?.() ?? [];
+    for (const { doc } of contents) {
+      const sel = doc?.getSelection?.();
+      if (sel && !sel.isCollapsed && sel.toString().trim()) {
+        return;
+      }
+    }
     state.pinched = globalThis.visualViewport.scale > 1;
     if (this.scrolled || state.pinched) return;
     if (e.touches.length > 1) {
