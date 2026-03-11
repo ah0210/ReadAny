@@ -39,7 +39,7 @@ import {
   CheckIcon,
   ShareIcon,
 } from "@/components/ui/Icon";
-import NoteIllustration from "@/assets/note.svg";
+import NoteIllustration from "../../assets/note.svg";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type DetailTab = "notes" | "highlights";

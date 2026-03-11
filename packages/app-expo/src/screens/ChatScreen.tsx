@@ -45,7 +45,7 @@ import {
   XIcon,
   Trash2Icon,
 } from "@/components/ui/Icon";
-import ThinkIllustration from "@/assets/think.svg";
+import ThinkIllustration from "../../assets/think.svg";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SIDEBAR_WIDTH = Math.min(SCREEN_WIDTH * 0.75, 300);

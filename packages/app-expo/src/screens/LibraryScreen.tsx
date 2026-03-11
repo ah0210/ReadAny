@@ -42,7 +42,7 @@ import {
 } from "@/components/ui/Icon";
 import * as DocumentPicker from "expo-document-picker";
 import { BookCard } from "@/components/library/BookCard";
-import BookIllustration from "@/assets/book.svg";
+import BookIllustration from "../../assets/book.svg";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
