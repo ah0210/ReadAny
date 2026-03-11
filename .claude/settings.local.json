@@ -7,7 +7,14 @@
       "Bash(node:*)",
       "Bash(rm:*)",
       "Bash(echo:*)",
-      "Bash(sed:*)"
+      "Bash(sed:*)",
+      "Bash(git stash:*)",
+      "Bash(git push:*)",
+      "Bash(git:*)",
+      "Bash(gh run:*)",
+      "Bash(python3:*)",
+      "Bash(ls:*)",
+      "Bash(kill %1:*)"
     ]
   }
 }
