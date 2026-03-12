@@ -1,7 +1,7 @@
 /**
  * TTSSettings — TTS configuration panel in the settings dialog.
  *
- * Uses shadcn/ui components: Select, Slider, Input, Button.
+ * Uses shadcn/ui components: Select, Slider, Button.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -12,7 +12,6 @@ import {
   EDGE_TTS_VOICES,
 } from "@/lib/tts/tts-service";
 import type { TTSEngine } from "@/lib/tts/tts-service";
-import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import {
   Select,

@@ -2,7 +2,7 @@
  * TTSControls — Floating TTS playback control bar.
  *
  * Appears at bottom of reader when TTS is active.
- * Uses shadcn/ui: Button, Select, Slider, Input, Tooltip.
+ * Uses shadcn/ui: Button, Select, Slider, Tooltip.
  */
 import { useEffect, useState } from "react";
 import { useTTSStore } from "@/stores/tts-store";
@@ -12,7 +12,6 @@ import {
 } from "@/lib/tts/tts-service";
 import type { TTSEngine } from "@/lib/tts/tts-service";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import {
   Select,
