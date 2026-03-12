@@ -48,8 +48,6 @@ export function useStreamingChat(options?: StreamingChatOptions) {
   const streamingRef = useRef<StreamingChat | null>(null);
 
   const {
-    threads,
-    getActiveThreadId,
     createThread,
     addMessage,
     updateThreadTitle,
@@ -81,12 +79,16 @@ export function useStreamingChat(options?: StreamingChatOptions) {
 
   const getOrCreateThread = useCallback(
     async (bookId?: string): Promise<Thread> => {
-      const activeId = getActiveThreadId(bookId);
-      const existing = activeId ? threads.find((t) => t.id === activeId) : null;
+      // Read fresh state directly to avoid stale closure
+      const { threads: freshThreads, generalActiveThreadId, bookActiveThreadIds } = useChatStore.getState();
+      const activeId = bookId
+        ? bookActiveThreadIds[bookId] || null
+        : generalActiveThreadId;
+      const existing = activeId ? freshThreads.find((t) => t.id === activeId) : null;
       if (existing) return existing;
       return await createThread(bookId);
     },
-    [threads, getActiveThreadId, createThread],
+    [createThread],
   );
 
   const sendMessage = useCallback(
@@ -102,13 +104,7 @@ export function useStreamingChat(options?: StreamingChatOptions) {
         createdAt: Date.now(),
       };
 
-      setState({
-        isStreaming: true,
-        currentMessage: initialMessage,
-        currentStep: "thinking",
-      });
       setError(null);
-      setStreaming(true);
 
       try {
         const bookId = overrideBookId ?? options?.bookId;
@@ -154,7 +150,16 @@ export function useStreamingChat(options?: StreamingChatOptions) {
           createdAt: Date.now(),
         };
 
+        // Add user message to store FIRST so it renders immediately
         await addMessage(thread.id, userMessage as any);
+
+        // Then set streaming state — user message is already visible
+        setState({
+          isStreaming: true,
+          currentMessage: initialMessage,
+          currentStep: "thinking",
+        });
+        setStreaming(true);
 
         streamingRef.current = new StreamingChat();
 
@@ -266,14 +271,16 @@ export function useStreamingChat(options?: StreamingChatOptions) {
               createdAt: Date.now(),
             };
 
+            // Persist to store FIRST, then clear streaming state
+            // This prevents the gap where message disappears
+            await addMessage(thread.id, assistantMessage as any);
+
             setState({
               isStreaming: false,
               currentMessage: null,
               currentStep: "idle",
             });
             setStreaming(false);
-
-            await addMessage(thread.id, assistantMessage as any);
           },
           onError: async (err) => {
             setError(err);
@@ -342,14 +349,15 @@ export function useStreamingChat(options?: StreamingChatOptions) {
               createdAt: Date.now(),
             };
 
+            // Persist error message FIRST, then clear streaming state
+            await addMessage(thread.id, errorMessage as any);
+
             setState({
               isStreaming: false,
               currentMessage: null,
               currentStep: "idle",
             });
             setStreaming(false);
-
-            await addMessage(thread.id, errorMessage as any);
           },
           onToolCall: (name, args) => {
             if (currentTextPart) {

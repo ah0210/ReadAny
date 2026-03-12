@@ -3,6 +3,17 @@
  *
  * Initialises platform service, i18n, and mounts navigation.
  */
+
+// Polyfill AbortSignal.throwIfAborted — missing in Hermes, required by LangChain
+if (typeof AbortSignal !== "undefined" && !AbortSignal.prototype.throwIfAborted) {
+  AbortSignal.prototype.throwIfAborted = function () {
+    if (this.aborted) {
+      const err = this.reason ?? new Error("The operation was aborted.");
+      throw err;
+    }
+  };
+}
+
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -13,6 +24,7 @@ import { StatusBar } from "expo-status-bar";
 import { setPlatformService } from "@readany/core/services";
 import { initDatabase } from "@readany/core/db/database";
 import { initI18nLanguage } from "@readany/core/i18n";
+import { setStreamingFetch } from "@readany/core/ai/llm-provider";
 import { setSessionEventSource, rnSessionEventSource } from "@/hooks";
 import { setTTSPlayerFactories } from "@/stores";
 
@@ -37,6 +49,10 @@ export default function App() {
 
       // 4. Restore persisted language
       await initI18nLanguage();
+
+      // 5. Inject streaming-compatible fetch for AI calls
+      const { fetch: expoFetch } = await import("expo/fetch");
+      setStreamingFetch(expoFetch as typeof globalThis.fetch);
 
       setReady(true);
     }

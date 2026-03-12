@@ -9,8 +9,7 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  Keyboard,
-  Pressable,
+  Alert,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
@@ -20,6 +19,7 @@ import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useStreamingChat } from "@readany/core/hooks/use-streaming-chat";
 import { useChatStore } from "@/stores/chat-store";
 import { useLibraryStore } from "@/stores";
+import { useSettingsStore } from "@/stores/settings-store";
 import { convertToMessageV2, mergeMessagesWithStreaming } from "@readany/core/utils/chat-utils";
 import type { MessageV2 } from "@readany/core/types/message";
 import type { AttachedQuote } from "@readany/core/types";
@@ -81,9 +81,26 @@ export function BookChatScreen({ route, navigation }: Props) {
 
   const handleSend = useCallback(
     async (text: string, deepThinking: boolean, quotes?: AttachedQuote[]) => {
+      // Validate AI config before sending
+      const { aiConfig } = useSettingsStore.getState();
+      const endpoint = aiConfig.endpoints.find((e) => e.id === aiConfig.activeEndpointId);
+      if (!endpoint?.apiKey || !aiConfig.activeModel) {
+        Alert.alert(
+          t("chat.configRequired", "需要配置 AI"),
+          t("chat.configRequiredMessage", "请先在设置中配置 AI 端点和模型"),
+          [
+            { text: t("common.cancel", "取消"), style: "cancel" },
+            {
+              text: t("common.settings", "去设置"),
+              onPress: () => navigation.navigate("AISettings"),
+            },
+          ],
+        );
+        return;
+      }
       await sendMessage(text, bookId, deepThinking, quotes);
     },
-    [sendMessage, bookId],
+    [sendMessage, bookId, navigation, t],
   );
 
   return (
@@ -108,13 +125,13 @@ export function BookChatScreen({ route, navigation }: Props) {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={0}
       >
-        <Pressable style={s.content} onPress={Keyboard.dismiss}>
+        <View style={s.content}>
           <MessageList
             messages={allMessages}
             isStreaming={isStreaming}
             currentStep={currentStep}
           />
-        </Pressable>
+        </View>
         <ChatInput
           onSend={handleSend}
           onStop={stopStream}

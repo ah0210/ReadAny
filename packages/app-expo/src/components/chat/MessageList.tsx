@@ -36,38 +36,44 @@ export function MessageList({
   const colors = useColors();
   const s = makeStyles(colors);
   const flatListRef = useRef<FlatList>(null);
-  const [isAtBottom, setIsAtBottom] = useState(true);
+  const isAtBottomRef = useRef(true);
   const [showScrollDown, setShowScrollDown] = useState(false);
 
-  // Auto-scroll when new messages arrive
+  // Track last part count for auto-scroll dependency
+  const lastMsg = messages[messages.length - 1];
+  const lastMsgPartsCount = lastMsg?.parts?.length ?? 0;
+
+  // Auto-scroll when new messages arrive or parts update
   useEffect(() => {
-    if (isAtBottom && flatListRef.current && messages.length > 0) {
+    if (isAtBottomRef.current && flatListRef.current && messages.length > 0) {
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
       }, 100);
     }
-  }, [messages.length, isAtBottom]);
+  }, [messages.length, lastMsgPartsCount]);
 
   // Periodic scroll during streaming
   useEffect(() => {
-    if (!isStreaming || !isAtBottom) return;
+    if (!isStreaming) return;
     const interval = setInterval(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
+      if (isAtBottomRef.current) {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }
     }, 300);
     return () => clearInterval(interval);
-  }, [isStreaming, isAtBottom]);
+  }, [isStreaming]);
 
   const handleScroll = useCallback((e: any) => {
     const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
     const nearBottom =
       contentSize.height - contentOffset.y - layoutMeasurement.height <
       BOTTOM_THRESHOLD;
-    setIsAtBottom(nearBottom);
+    isAtBottomRef.current = nearBottom;
     setShowScrollDown(!nearBottom);
   }, []);
 
   const handleScrollToBottom = useCallback(() => {
-    setIsAtBottom(true);
+    isAtBottomRef.current = true;
     setShowScrollDown(false);
     flatListRef.current?.scrollToEnd({ animated: true });
   }, []);
@@ -91,7 +97,6 @@ export function MessageList({
   );
 
   // Show indicator when streaming but no assistant content yet
-  const lastMsg = messages[messages.length - 1];
   const showStreamingIndicator =
     isStreaming &&
     currentStep &&
@@ -223,12 +228,14 @@ function MessageBubble({ message, colors, isStreaming, currentStep }: MessageBub
   const isLastPartActiveToolCall =
     lastPart?.type === "tool_call" &&
     (lastPart.status === "pending" || lastPart.status === "running");
+  const isLastPartRunningReasoning = lastPart?.type === "reasoning" && lastPart.status === "running";
   const showGapIndicator =
     isStreaming &&
     currentStep !== "idle" &&
     lastPart &&
     !isLastPartRunningText &&
-    !isLastPartActiveToolCall;
+    !isLastPartActiveToolCall &&
+    !isLastPartRunningReasoning;
 
   return (
     <View style={s.assistantRow}>

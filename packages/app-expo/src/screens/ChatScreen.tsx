@@ -12,9 +12,8 @@ import {
   Platform,
   Animated,
   Dimensions,
-  Pressable,
-  Keyboard,
   Image,
+  Pressable,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
@@ -103,7 +102,6 @@ export function ChatScreen() {
     threads,
     generalActiveThreadId,
     loadAllThreads,
-    createThread,
     removeThread,
     setGeneralActiveThread,
     getThreadsForContext,
@@ -158,14 +156,9 @@ export function ChatScreen() {
         return;
       }
 
-      if (!generalActiveThreadId) {
-        await createThread(undefined, text.slice(0, 50));
-        setTimeout(() => sendMessage(text, undefined, deepThinking, quotes), 50);
-      } else {
-        await sendMessage(text, undefined, deepThinking, quotes);
-      }
+      await sendMessage(text, undefined, deepThinking, quotes);
     },
-    [sendMessage, generalActiveThreadId, createThread, navigation, t],
+    [sendMessage, navigation, t],
   );
 
   const handleNewThread = useCallback(() => {
@@ -229,7 +222,7 @@ export function ChatScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={0}
       >
-        <Pressable style={s.content} onPress={Keyboard.dismiss}>
+        <View style={s.content}>
           {allMessages.length > 0 ? (
             <MessageList
               messages={allMessages}
@@ -239,7 +232,7 @@ export function ChatScreen() {
           ) : (
             <EmptyState colors={colors} onSuggestionPress={handleSend} />
           )}
-        </Pressable>
+        </View>
         <ChatInput
           onSend={handleSend}
           onStop={stopStream}

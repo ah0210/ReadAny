@@ -181,12 +181,14 @@ function MessageBubble({ message, onCitationClick, isStreaming, currentStep }: M
   const isLastPartActiveToolCall =
     lastPart?.type === "tool_call" &&
     (lastPart.status === "pending" || lastPart.status === "running");
+  const isLastPartRunningReasoning = lastPart?.type === "reasoning" && lastPart.status === "running";
   const showGapIndicator =
     isStreaming &&
     currentStep !== "idle" &&
     lastPart &&
     !isLastPartRunningText &&
-    !isLastPartActiveToolCall;
+    !isLastPartActiveToolCall &&
+    !isLastPartRunningReasoning;
 
   return (
     <div className="group flex w-full flex-col gap-1">

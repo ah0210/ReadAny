@@ -9,6 +9,16 @@
 import type { AIConfig, AIEndpoint } from "../types";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 
+/**
+ * Optional custom fetch for streaming support (e.g. expo/fetch in React Native).
+ * Set via setStreamingFetch() before creating chat models.
+ */
+let _streamingFetch: typeof globalThis.fetch | undefined;
+
+export function setStreamingFetch(fetchImpl: typeof globalThis.fetch) {
+  _streamingFetch = fetchImpl;
+}
+
 export interface LLMOptions {
   temperature?: number;
   maxTokens?: number;
@@ -55,6 +65,9 @@ export async function createChatModelFromEndpoint(
   if (!endpoint.apiKey) {
     throw new Error(`API key not set for endpoint "${endpoint.name}".`);
   }
+  if (!model) {
+    throw new Error("No model specified. Go to Settings → AI to choose a model.");
+  }
 
   const temperature = options.temperature ?? 0.7;
   const maxTokens = options.maxTokens ?? 4096;
@@ -70,7 +83,10 @@ export async function createChatModelFromEndpoint(
         temperature: options.deepThinking ? 1 : temperature,
         maxTokens,
         streaming,
-        clientOptions: endpoint.baseUrl ? { baseURL: endpoint.baseUrl } : undefined,
+        clientOptions: {
+          ...(endpoint.baseUrl ? { baseURL: endpoint.baseUrl } : {}),
+          ...(_streamingFetch ? { fetch: _streamingFetch } : {}),
+        },
       };
 
       // Enable extended thinking when deepThinking is requested
@@ -157,7 +173,10 @@ export async function createChatModelFromEndpoint(
       return new ChatDeepSeekFixed({
         model,
         apiKey: endpoint.apiKey,
-        configuration: endpoint.baseUrl ? { baseURL: endpoint.baseUrl } : undefined,
+        configuration: {
+          ...(endpoint.baseUrl ? { baseURL: endpoint.baseUrl } : {}),
+          ...(_streamingFetch ? { fetch: _streamingFetch } : {}),
+        },
         temperature,
         maxTokens,
         streaming,
@@ -166,8 +185,8 @@ export async function createChatModelFromEndpoint(
 
     default: {
       // Auto-detect DeepSeek from baseUrl or model name
-      const isDeepSeek = 
-        endpoint.baseUrl?.includes("deepseek") || 
+      const isDeepSeek =
+        endpoint.baseUrl?.includes("deepseek") ||
         model.toLowerCase().includes("deepseek") ||
         model.toLowerCase().includes("reasoner");
 
@@ -226,7 +245,10 @@ export async function createChatModelFromEndpoint(
         return new ChatDeepSeekFixed({
           model,
           apiKey: endpoint.apiKey,
-          configuration: endpoint.baseUrl ? { baseURL: endpoint.baseUrl } : undefined,
+          configuration: {
+            ...(endpoint.baseUrl ? { baseURL: endpoint.baseUrl } : {}),
+            ...(_streamingFetch ? { fetch: _streamingFetch } : {}),
+          },
           temperature,
           maxTokens,
           streaming,
@@ -240,6 +262,7 @@ export async function createChatModelFromEndpoint(
         apiKey: endpoint.apiKey,
         configuration: {
           baseURL: endpoint.baseUrl || undefined,
+          ...(_streamingFetch ? { fetch: _streamingFetch } : {}),
         },
         temperature,
         maxTokens,

@@ -132,32 +132,32 @@ function ReasoningPartView({ part }: { part: ReasoningPart }) {
 
   return (
     <div className="my-1">
-      <div className="overflow-hidden rounded-lg border border-violet-200 bg-violet-50/50">
+      <div className="overflow-hidden rounded-lg border border-border bg-muted/50">
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
-          className="flex w-full items-center justify-between gap-2 px-3 py-2 active:bg-violet-100/50"
+          className="flex w-full items-center justify-between gap-2 px-3 py-2 active:bg-accent"
         >
           <div className="flex flex-1 items-center gap-2 overflow-hidden">
             {part.status === "running" ? (
-              <div className="h-3 w-3 animate-pulse rounded-full bg-violet-400" />
+              <div className="h-3 w-3 animate-pulse rounded-full bg-muted-foreground/60" />
             ) : (
-              <Brain className="h-4 w-4 text-violet-600" />
+              <Brain className="h-4 w-4 text-muted-foreground" />
             )}
-            <span className="text-sm font-medium text-violet-700">
+            <span className="text-sm font-medium text-foreground">
               {part.status === "running" ? t("streaming.reasoningRunning") : t("streaming.reasoningDone")}
             </span>
           </div>
           <ChevronDown
             className={cn(
-              "h-4 w-4 text-violet-400 transition-transform",
+              "h-4 w-4 text-muted-foreground transition-transform",
               isOpen && "rotate-180",
             )}
           />
         </button>
         {isOpen && (
-          <div className="max-h-48 overflow-y-auto border-t border-violet-200/50 bg-white/50 p-3">
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-violet-900">
+          <div className="max-h-48 overflow-y-auto border-t border-border bg-card/50 p-3">
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/85">
               {throttledText}
             </p>
           </div>
@@ -197,7 +197,7 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
   const getStatusIcon = () => {
     switch (part.status) {
       case "pending":
-        return <Circle className="h-4 w-4 text-neutral-300" />;
+        return <Circle className="h-4 w-4 text-neutral-300 dark:text-neutral-600" />;
       case "running":
         return <Loader2 className="h-4 w-4 animate-spin text-blue-500" />;
       case "completed":
@@ -205,7 +205,7 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
       case "error":
         return <XCircle className="h-4 w-4 text-red-500" />;
       default:
-        return <Circle className="h-4 w-4 text-neutral-300" />;
+        return <Circle className="h-4 w-4 text-neutral-300 dark:text-neutral-600" />;
     }
   };
 
@@ -214,39 +214,39 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
 
   return (
     <div className="my-1">
-      <div className="overflow-hidden rounded-lg border border-neutral-200">
+      <div className="overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-700">
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
-          className="flex w-full items-center justify-between gap-2 px-3 py-2 active:bg-neutral-50"
+          className="flex w-full items-center justify-between gap-2 px-3 py-2 active:bg-neutral-50 dark:active:bg-neutral-800"
         >
           <div className="flex flex-1 items-center gap-2 overflow-hidden">
             {getStatusIcon()}
-            <Wrench className="h-3.5 w-3.5 text-neutral-500" />
-            <span className="text-sm font-medium text-neutral-700">{label}</span>
+            <Wrench className="h-3.5 w-3.5 text-neutral-500 dark:text-neutral-400" />
+            <span className="text-sm font-medium text-neutral-700 dark:text-neutral-200">{label}</span>
             {queryText && (
-              <span className="flex-1 truncate font-mono text-xs text-neutral-500">
+              <span className="flex-1 truncate font-mono text-xs text-neutral-500 dark:text-neutral-400">
                 {queryText.slice(0, 30)}
               </span>
             )}
           </div>
           <ChevronDown
             className={cn(
-              "h-4 w-4 text-neutral-400 transition-transform",
+              "h-4 w-4 text-neutral-400 dark:text-neutral-500 transition-transform",
               isOpen && "rotate-180",
             )}
           />
         </button>
         {isOpen && (
-          <div className="space-y-3 border-t border-neutral-100 bg-neutral-50/50 p-3">
+          <div className="space-y-3 border-t border-neutral-100 dark:border-neutral-700 bg-neutral-50/50 dark:bg-neutral-800/50 p-3">
             {Object.keys(part.args).length > 0 && (
               <div>
-                <h4 className="mb-1.5 text-xs font-medium text-neutral-500">{t("common.params")}</h4>
-                <div className="rounded border border-neutral-200 bg-white p-2 font-mono text-xs break-all">
+                <h4 className="mb-1.5 text-xs font-medium text-neutral-500 dark:text-neutral-400">{t("common.params")}</h4>
+                <div className="rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-2 font-mono text-xs break-all">
                   {Object.entries(part.args).map(([key, value]) => (
                     <div key={key} className="mb-0.5 last:mb-0">
-                      <span className="text-neutral-400">{key}:</span>{" "}
-                      <span className="text-neutral-600">
+                      <span className="text-neutral-400 dark:text-neutral-500">{key}:</span>{" "}
+                      <span className="text-neutral-600 dark:text-neutral-300">
                         {typeof value === "string" && value.length > 80
                           ? `${value.slice(0, 80)}...`
                           : String(value)}
@@ -258,9 +258,9 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
             )}
             {part.result !== undefined && (
               <div>
-                <h4 className="mb-1.5 text-xs font-medium text-neutral-500">{t("common.result")}</h4>
-                <div className="max-h-36 overflow-auto rounded border border-neutral-200 bg-white p-2 font-mono text-xs">
-                  <pre className="whitespace-pre-wrap text-neutral-600">
+                <h4 className="mb-1.5 text-xs font-medium text-neutral-500 dark:text-neutral-400">{t("common.result")}</h4>
+                <div className="max-h-36 overflow-auto rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-2 font-mono text-xs">
+                  <pre className="whitespace-pre-wrap text-neutral-600 dark:text-neutral-300">
                     {typeof part.result === "string" && part.result.length > 300
                       ? `${part.result.slice(0, 300)}...`
                       : JSON.stringify(part.result, null, 2)}
@@ -269,7 +269,7 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
               </div>
             )}
             {part.error && (
-              <div className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-600">
+              <div className="rounded border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 p-2 text-xs text-red-600 dark:text-red-400">
                 {part.error}
               </div>
             )}

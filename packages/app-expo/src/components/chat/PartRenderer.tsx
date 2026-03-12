@@ -62,7 +62,7 @@ function TextPartView({ part }: { part: TextPart }) {
         <View style={{ flexDirection: "row", paddingVertical: 4 }}>
           <View
             style={{
-              width: 2,
+              width: 3,
               height: 16,
               borderRadius: 1,
               backgroundColor: colors.foreground,
@@ -102,7 +102,7 @@ function ReasoningPartView({ part }: { part: ReasoningPart }) {
           {part.status === "running" ? (
             <View style={s.pulsingDot} />
           ) : (
-            <BrainIcon size={14} color={colors.violet} />
+            <BrainIcon size={14} color={colors.mutedForeground} />
           )}
           <Text style={s.headerText}>
             {part.status === "running"
@@ -111,7 +111,7 @@ function ReasoningPartView({ part }: { part: ReasoningPart }) {
           </Text>
         </View>
         <View style={[s.chevron, isOpen && s.chevronOpen]}>
-          <ChevronDownIcon size={14} color={colors.violet} />
+          <ChevronDownIcon size={14} color={colors.mutedForeground} />
         </View>
       </TouchableOpacity>
       {isOpen && (
@@ -270,8 +270,8 @@ const makeReasoningStyles = (colors: ThemeColors) =>
       marginVertical: 4,
       borderRadius: radius.md,
       borderWidth: 1,
-      borderColor: withOpacity(colors.violet, 0.3),
-      backgroundColor: withOpacity(colors.violet, 0.05),
+      borderColor: colors.border,
+      backgroundColor: withOpacity(colors.muted, 0.5),
       overflow: "hidden",
     },
     header: {
@@ -291,20 +291,20 @@ const makeReasoningStyles = (colors: ThemeColors) =>
       width: 10,
       height: 10,
       borderRadius: 5,
-      backgroundColor: colors.violet,
-      opacity: 0.8,
+      backgroundColor: colors.mutedForeground,
+      opacity: 0.6,
     },
     headerText: {
       fontSize: fs.sm,
       fontWeight: fw.medium,
-      color: colors.violet,
+      color: colors.foreground,
     },
     chevron: {},
     chevronOpen: { transform: [{ rotate: "180deg" }] },
     body: {
       borderTopWidth: 0.5,
-      borderTopColor: withOpacity(colors.violet, 0.2),
-      backgroundColor: withOpacity(colors.card, 0.3),
+      borderTopColor: colors.border,
+      backgroundColor: withOpacity(colors.card, 0.5),
       paddingHorizontal: 10,
       paddingVertical: 8,
       maxHeight: 200,
@@ -312,7 +312,8 @@ const makeReasoningStyles = (colors: ThemeColors) =>
     bodyText: {
       fontSize: fs.sm,
       lineHeight: 18,
-      color: colors.violet,
+      color: colors.foreground,
+      opacity: 0.85,
     },
   });
 
