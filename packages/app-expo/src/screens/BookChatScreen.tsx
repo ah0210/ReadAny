@@ -138,9 +138,23 @@ export function BookChatScreen({ route, navigation }: Props) {
   // Handlers
   const handleSend = useCallback(
     async (text: string, deepThinking: boolean, quotes?: AttachedQuote[]) => {
-      const { aiConfig } = useSettingsStore.getState();
-      const endpoint = aiConfig.endpoints.find((e) => e.id === aiConfig.activeEndpointId);
-      if (!endpoint?.apiKey || !aiConfig.activeModel) {
+      const state = useSettingsStore.getState();
+      const { aiConfig } = state;
+      let endpoint = aiConfig.endpoints.find((e) => e.id === aiConfig.activeEndpointId);
+      let model = aiConfig.activeModel;
+
+      // 如果当前端点无 apiKey 或无 activeModel，尝试自动选择一个可用的
+      if (!endpoint?.apiKey || !model) {
+        const usable = aiConfig.endpoints.find((e) => e.apiKey && e.models.length > 0);
+        if (usable) {
+          state.setActiveEndpoint(usable.id);
+          state.setActiveModel(usable.models[0]);
+          endpoint = usable;
+          model = usable.models[0];
+        }
+      }
+
+      if (!endpoint?.apiKey || !model) {
         Alert.alert(
           t("chat.configRequired", "需要配置 AI"),
           t("chat.configRequiredMessage", "请先在设置中配置 AI 端点和模型"),

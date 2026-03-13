@@ -1,7 +1,7 @@
 import { CheckIcon, ChevronDownIcon } from "@/components/ui/Icon";
 import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
-import { useSettingsStore } from "@readany/core/stores/settings-store";
+import { useSettingsStore } from "@/stores/settings-store";
 /**
  * ModelSelector — compact pill trigger with popover dropdown.
  * Matches app-mobile MobileModelSelector style.
