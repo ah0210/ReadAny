@@ -325,7 +325,7 @@ export function ReadingStatsPanel() {
           </>
         ) : (
           <div className="flex justify-center">
-            <div style={{ maxWidth: "1200px", width: "100%" }}>
+            <div style={{ maxWidth: "1350px", width: "100%" }}>
               <BarChart data={barChartData} height={200} emptyMessage={t("stats.noData")} />
             </div>
           </div>
@@ -381,7 +381,7 @@ function HeatmapChart({ dailyStats, lang }: { dailyStats: DailyStats[]; lang: st
     if (!el) return;
     const availableWidth = el.clientWidth - labelWidth;
     const computed = Math.floor((availableWidth + gap) / 53 - gap);
-    setCellSize(Math.max(8, Math.min(computed, 16)));
+    setCellSize(Math.max(8, Math.min(computed, 22)));
   }, []);
 
   useEffect(() => {
@@ -455,7 +455,7 @@ function HeatmapChart({ dailyStats, lang }: { dailyStats: DailyStats[]; lang: st
   return (
     <TooltipProvider delayDuration={100}>
       <div ref={containerRef} className="w-full flex justify-center">
-        <div style={{ maxWidth: "1200px", width: "100%" }}>
+        <div style={{ maxWidth: "1600px" }}>
           {/* Month labels */}
           <div className="flex" style={{ paddingLeft: `${labelWidth}px` }}>
             {monthLabels.map((m, i) => {
@@ -482,39 +482,39 @@ function HeatmapChart({ dailyStats, lang }: { dailyStats: DailyStats[]; lang: st
                   <div key={d} className="flex items-center" style={{ height: `${cellSize}px` }}>
                     <span className="text-[10px] text-muted-foreground">{label?.label || ""}</span>
                   </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
 
-          {/* Heatmap grid */}
-          <div className="flex" style={{ gap: `${gap}px` }}>
-            {weeks.map((week, wi) => (
-              <div key={wi} className="flex flex-col" style={{ gap: `${gap}px` }}>
-                {week[0] && week[0].dayOfWeek > 0 && wi === 0 &&
-                  Array.from({ length: week[0].dayOfWeek }).map((_, i) => (
-                    <div key={`empty-${i}`} style={{ height: `${cellSize}px`, width: `${cellSize}px` }} />
+            {/* Heatmap grid */}
+            <div className="flex" style={{ gap: `${gap}px` }}>
+              {weeks.map((week, wi) => (
+                <div key={wi} className="flex flex-col" style={{ gap: `${gap}px` }}>
+                  {week[0] && week[0].dayOfWeek > 0 && wi === 0 &&
+                    Array.from({ length: week[0].dayOfWeek }).map((_, i) => (
+                      <div key={`empty-${i}`} style={{ height: `${cellSize}px`, width: `${cellSize}px` }} />
+                    ))}
+                  {week.map((day) => (
+                    <Tooltip key={day.date}>
+                      <TooltipTrigger asChild>
+                        <div
+                          className={`rounded-[2px] transition-colors ${getHeatColor(day.time)}`}
+                          style={{ height: `${cellSize}px`, width: `${cellSize}px` }}
+                        />
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="bg-popover text-popover-foreground">
+                        <p className="text-xs font-medium">
+                          {day.time > 0
+                            ? t("stats.heatmapTooltip", { time: Math.round(day.time), date: day.date })
+                            : t("stats.heatmapNoReading", { date: day.date })}
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
                   ))}
-                {week.map((day) => (
-                  <Tooltip key={day.date}>
-                    <TooltipTrigger asChild>
-                      <div
-                        className={`rounded-[2px] transition-colors ${getHeatColor(day.time)}`}
-                        style={{ height: `${cellSize}px`, width: `${cellSize}px` }}
-                      />
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="bg-popover text-popover-foreground">
-                      <p className="text-xs font-medium">
-                        {day.time > 0
-                          ? t("stats.heatmapTooltip", { time: Math.round(day.time), date: day.date })
-                          : t("stats.heatmapNoReading", { date: day.date })}
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                ))}
-              </div>
-            ))}
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
         </div>
       </div>
     </TooltipProvider>
