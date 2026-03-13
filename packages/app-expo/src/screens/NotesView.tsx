@@ -249,13 +249,13 @@ export function NotesView({ initialBookId, showBackButton, edges = ["top"], hide
           text: t("common.delete", "删除"),
           style: "destructive",
           onPress: () => {
-            updateHighlight(highlight.id, { note: undefined });
+            removeHighlight(highlight.id);
             loadStats();
           },
         },
       ]);
     },
-    [updateHighlight, loadStats, t],
+    [removeHighlight, loadStats, t],
   );
 
   const handleDeleteHighlight = useCallback(

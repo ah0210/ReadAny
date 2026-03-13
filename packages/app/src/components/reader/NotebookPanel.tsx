@@ -126,15 +126,10 @@ export function NotebookPanel({ bookId, onClose, onGoToCfi, onAddAnnotation, onD
 
   const handleDeleteNote = () => {
     if (editingHighlight) {
-      // Just remove the note, keep the highlight
-      updateHighlight(editingHighlight.id, { 
-        note: undefined,
-        updatedAt: Date.now(),
-      });
-      // Re-render annotation: remove old (wavy line + tooltip) then re-add as plain highlight
+      // Delete the entire highlight (note + highlight)
+      removeHighlight(editingHighlight.id);
       if (editingHighlight.cfi) {
         onDeleteAnnotation?.(editingHighlight.cfi);
-        onAddAnnotation?.(editingHighlight.cfi, editingHighlight.color);
       }
       clearPending();
       setNoteContent("");
@@ -153,15 +148,10 @@ export function NotebookPanel({ bookId, onClose, onGoToCfi, onAddAnnotation, onD
   };
 
   const handleDeleteNoteOnly = (highlight: Highlight) => {
-    // Just remove the note, keep the highlight
-    updateHighlight(highlight.id, { 
-      note: undefined,
-      updatedAt: Date.now(),
-    });
-    // Re-render annotation: remove old (wavy line + tooltip) then re-add as plain highlight
+    // Delete the entire highlight (note + highlight)
+    removeHighlight(highlight.id);
     if (highlight.cfi) {
       onDeleteAnnotation?.(highlight.cfi);
-      onAddAnnotation?.(highlight.cfi, highlight.color);
     }
     // Clear editing state if we're editing this highlight
     if (editingHighlight?.id === highlight.id) {
