@@ -18,7 +18,9 @@
       "Bash(grep:*)",
       "Bash(npm view:*)",
       "WebFetch(domain:unpkg.com)",
-      "Bash(kill 82543:*)"
+      "Bash(kill 82543:*)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebSearch"
     ]
   }
 }

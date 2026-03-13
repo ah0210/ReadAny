@@ -280,6 +280,23 @@
 
         el.addEventListener('delete-annotation', () => { /* no-op */ });
 
+        el.addEventListener('show-annotation', (e) => {
+          const { value, index, range } = e.detail;
+          if (!value || !range) return;
+          const rect = range.getBoundingClientRect();
+          const iframe = range.startContainer.ownerDocument?.defaultView?.frameElement;
+          const iframeRect = iframe ? iframe.getBoundingClientRect() : { left: 0, top: 0 };
+          postToRN('show-annotation', {
+            value,
+            position: {
+              x: iframeRect.left + rect.left + rect.width / 2,
+              y: iframeRect.top + rect.top - 8,
+              selectionTop: iframeRect.top + rect.top,
+              selectionBottom: iframeRect.top + rect.bottom,
+            },
+          });
+        });
+
         container.appendChild(el);
         view = el;
 

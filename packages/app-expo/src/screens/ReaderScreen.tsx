@@ -5,6 +5,8 @@ import {
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  CheckIcon,
+  EditIcon,
   MessageSquareIcon,
   NotebookPenIcon,
   SearchIcon,
@@ -13,6 +15,8 @@ import {
   XIcon,
 } from "@/components/ui/Icon";
 import { useReaderBridge } from "@/hooks/use-reader-bridge";
+import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
+import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import type { RelocateEvent, SelectionEvent } from "@/hooks/use-reader-bridge";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import {
@@ -43,7 +47,9 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -228,6 +234,15 @@ export function ReaderScreen({ route, navigation }: Props) {
   const [readerHtmlUri, setReaderHtmlUri] = useState<string | null>(null);
   const [currentCfi, setCurrentCfi] = useState("");
   const [selection, setSelection] = useState<SelectionEvent | null>(null);
+  const [noteViewHighlight, setNoteViewHighlight] = useState<{
+    id: string;
+    text: string;
+    note: string;
+    cfi: string;
+    color: string;
+  } | null>(null);
+  const [noteViewEditing, setNoteViewEditing] = useState(false);
+  const [noteViewContent, setNoteViewContent] = useState("");
   const assetLoadedRef = useRef(false);
 
   const readSettings = useSettingsStore((s) => s.readSettings);
@@ -378,11 +393,23 @@ export function ReaderScreen({ route, navigation }: Props) {
     }) => {
       const highlight = highlights.find((h) => h.cfi === detail.value);
       if (!highlight) return;
-      setSelection({
-        text: highlight.text,
-        cfi: highlight.cfi,
-        position: detail.position,
-      });
+      if (highlight.note) {
+        setNoteViewHighlight({
+          id: highlight.id,
+          text: highlight.text,
+          note: highlight.note,
+          cfi: highlight.cfi,
+          color: highlight.color,
+        });
+        setNoteViewContent(highlight.note);
+        setNoteViewEditing(false);
+      } else {
+        setSelection({
+          text: highlight.text,
+          cfi: highlight.cfi,
+          position: detail.position,
+        });
+      }
     },
   });
 
@@ -1240,6 +1267,117 @@ export function ReaderScreen({ route, navigation }: Props) {
         </View>
       </Modal>
 
+      {/* ─── Note View Modal ─── */}
+      <Modal
+        visible={!!noteViewHighlight}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          setNoteViewHighlight(null);
+          setNoteViewEditing(false);
+        }}
+      >
+        <KeyboardAvoidingView
+          style={s.noteViewOverlay}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => {
+              setNoteViewHighlight(null);
+              setNoteViewEditing(false);
+            }}
+          />
+          <View style={[s.noteViewModal, { paddingBottom: insets.bottom || 16 }]}>
+            <View style={s.noteViewHeader}>
+              <Text style={s.noteViewTitle}>{t("reader.viewNote", "查看笔记")}</Text>
+              <TouchableOpacity
+                style={s.noteViewCloseBtn}
+                onPress={() => {
+                  setNoteViewHighlight(null);
+                  setNoteViewEditing(false);
+                }}
+              >
+                <XIcon size={18} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            </View>
+            {noteViewHighlight && (
+              <>
+                <Text style={s.noteViewQuote} numberOfLines={3}>
+                  "{noteViewHighlight.text}"
+                </Text>
+                {noteViewEditing ? (
+                  <>
+                    <View style={s.noteViewEditorContainer}>
+                      <RichTextEditor
+                        initialContent={noteViewContent}
+                        onChange={setNoteViewContent}
+                        placeholder={t("reader.notePlaceholder", "写下你的想法...")}
+                        autoFocus
+                      />
+                    </View>
+                    <View style={s.noteViewActions}>
+                      <TouchableOpacity
+                        style={s.noteViewCancelBtn}
+                        onPress={() => {
+                          setNoteViewEditing(false);
+                          setNoteViewContent(noteViewHighlight.note);
+                        }}
+                      >
+                        <XIcon size={14} color={colors.mutedForeground} />
+                        <Text style={s.noteViewCancelText}>{t("common.cancel", "取消")}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={s.noteViewSaveBtn}
+                        onPress={() => {
+                          if (noteViewContent.trim()) {
+                            const { updateHighlight } = useAnnotationStore.getState();
+                            updateHighlight(noteViewHighlight.id, { note: noteViewContent.trim() });
+                            bridge.removeAnnotation({ value: noteViewHighlight.cfi });
+                            bridge.addAnnotation({
+                              value: noteViewHighlight.cfi,
+                              color: noteViewHighlight.color,
+                              note: noteViewContent.trim(),
+                            });
+                            setNoteViewHighlight({
+                              ...noteViewHighlight,
+                              note: noteViewContent.trim(),
+                            });
+                          }
+                          setNoteViewEditing(false);
+                        }}
+                      >
+                        <CheckIcon size={14} color={colors.primaryForeground} />
+                        <Text style={s.noteViewSaveText}>{t("common.save", "保存")}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <ScrollView style={s.noteViewBody} showsVerticalScrollIndicator={false}>
+                      <MarkdownRenderer content={noteViewHighlight.note} />
+                    </ScrollView>
+                    <View style={s.noteViewActions}>
+                      <TouchableOpacity
+                        style={s.noteViewEditBtn}
+                        onPress={() => {
+                          setNoteViewContent(noteViewHighlight.note);
+                          setNoteViewEditing(true);
+                        }}
+                      >
+                        <EditIcon size={14} color={colors.primaryForeground} />
+                        <Text style={s.noteViewEditText}>{t("common.edit", "编辑")}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+              </>
+            )}
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {/* ─── Translation Panel ─── */}
       {showTranslation && translationText && (
         <TranslationPanel
@@ -1526,4 +1664,106 @@ const makeStyles = (colors: ThemeColors) =>
     highlightContent: { flex: 1 },
     highlightText: { fontSize: fontSize.sm, color: colors.foreground, lineHeight: 18 },
     highlightNote: { fontSize: fontSize.xs, color: colors.mutedForeground, marginTop: 4 },
+
+    noteViewOverlay: {
+      flex: 1,
+      justifyContent: "flex-end",
+      backgroundColor: "rgba(0,0,0,0.5)",
+    },
+    noteViewModal: {
+      backgroundColor: colors.card,
+      borderTopLeftRadius: radius.xxl,
+      borderTopRightRadius: radius.xxl,
+      padding: 16,
+      maxHeight: SCREEN_HEIGHT * 0.75,
+    },
+    noteViewHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 12,
+    },
+    noteViewTitle: {
+      fontSize: fontSize.md,
+      fontWeight: fontWeight.semibold,
+      color: colors.foreground,
+    },
+    noteViewCloseBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.muted,
+    },
+    noteViewQuote: {
+      fontSize: fontSize.sm,
+      color: colors.mutedForeground,
+      marginBottom: 12,
+      fontStyle: "italic",
+      lineHeight: 20,
+      paddingHorizontal: 8,
+      borderLeftWidth: 2,
+      borderLeftColor: colors.primary,
+    },
+    noteViewBody: {
+      maxHeight: SCREEN_HEIGHT * 0.35,
+      backgroundColor: colors.muted,
+      borderRadius: radius.lg,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    noteViewEditorContainer: {
+      height: 200,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: "hidden",
+    },
+    noteViewActions: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: 8,
+      marginTop: 12,
+    },
+    noteViewEditBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      backgroundColor: colors.primary,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: radius.lg,
+    },
+    noteViewEditText: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.primaryForeground,
+    },
+    noteViewCancelBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: radius.lg,
+    },
+    noteViewCancelText: {
+      fontSize: fontSize.sm,
+      color: colors.mutedForeground,
+    },
+    noteViewSaveBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      backgroundColor: colors.primary,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: radius.lg,
+    },
+    noteViewSaveText: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.primaryForeground,
+    },
   });

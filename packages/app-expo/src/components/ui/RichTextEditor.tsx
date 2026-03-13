@@ -1,7 +1,15 @@
 import { useColors, radius } from "@/styles/theme";
-import { useEditorBridge, RichText } from "@10play/tentap-editor";
-import { useMemo, useEffect, useState, useCallback } from "react";
-import { View, StyleSheet, TouchableOpacity, Text, TextInput, Modal } from "react-native";
+import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
+import { useCallback, useRef, useState } from "react";
+import {
+  View,
+  StyleSheet,
+  TouchableOpacity,
+  Text,
+  TextInput,
+  Modal,
+  ScrollView,
+} from "react-native";
 import {
   BoldIcon,
   ItalicIcon,
@@ -11,19 +19,17 @@ import {
   CodeIcon,
   Link2Icon,
   QuoteIcon,
-  MinusIcon,
   Heading1Icon,
   Heading2Icon,
   Heading3Icon,
-  Undo2Icon,
-  Redo2Icon,
   XIcon,
-  CheckIcon,
+  EyeIcon,
+  EditIcon,
 } from "@/components/ui/Icon";
 
 interface RichTextEditorProps {
   initialContent?: string;
-  onChange?: (html: string) => void;
+  onChange?: (markdown: string) => void;
   placeholder?: string;
   autoFocus?: boolean;
 }
@@ -35,281 +41,209 @@ export function RichTextEditor({
   autoFocus = false,
 }: RichTextEditorProps) {
   const colors = useColors();
+  const [value, setValue] = useState(initialContent);
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
-
-  const theme = useMemo(() => ({
-    webview: {
-      backgroundColor: colors.background,
-    },
-    webviewContainer: {},
-  }), [colors]);
-
-  const customCss = useMemo(() => `
-    * {
-      background-color: ${colors.background} !important;
-      color: ${colors.foreground} !important;
-    }
-    body {
-      font-size: 15px;
-      line-height: 1.6;
-      padding: 12px 16px;
-      margin: 0;
-    }
-    p {
-      margin: 8px 0;
-    }
-    h1 {
-      font-size: 24px;
-      font-weight: 600;
-      margin: 16px 0 8px;
-      color: ${colors.foreground} !important;
-    }
-    h2 {
-      font-size: 20px;
-      font-weight: 600;
-      margin: 14px 0 6px;
-      color: ${colors.foreground} !important;
-    }
-    h3 {
-      font-size: 16px;
-      font-weight: 600;
-      margin: 12px 0 4px;
-      color: ${colors.foreground} !important;
-    }
-    blockquote {
-      border-left: 3px solid ${colors.primary};
-      padding-left: 12px;
-      margin: 8px 0;
-      color: ${colors.mutedForeground};
-      background-color: ${colors.muted};
-      padding: 8px 12px;
-      border-radius: 0 8px 8px 0;
-    }
-    code {
-      background-color: ${colors.muted};
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-family: monospace;
-      font-size: 13px;
-      color: ${colors.foreground} !important;
-    }
-    pre {
-      background-color: ${colors.muted};
-      padding: 12px;
-      border-radius: 8px;
-      overflow-x: auto;
-    }
-    ul, ol {
-      padding-left: 20px;
-      margin: 8px 0;
-    }
-    li {
-      margin: 4px 0;
-    }
-    a {
-      color: ${colors.primary};
-      text-decoration: underline;
-    }
-    strong {
-      font-weight: 600;
-      color: ${colors.foreground} !important;
-    }
-    em {
-      color: ${colors.foreground} !important;
-    }
-    hr {
-      border: none;
-      border-top: 1px solid ${colors.border};
-      margin: 16px 0;
-    }
-    .ProseMirror p.is-editor-empty:first-child::before {
-      color: ${colors.mutedForeground};
-      content: "${placeholder}";
-      float: left;
-      height: 0;
-      pointer-events: none;
-    }
-    .ProseMirror {
-      outline: none;
-    }
-    .ProseMirror-focused {
-      outline: none;
-    }
-  `, [colors, placeholder]);
-
-  const editor = useEditorBridge({
-    autofocus: autoFocus,
-    avoidIosKeyboard: true,
-    initialContent,
-    theme,
+  const [linkText, setLinkText] = useState("");
+  const [previewMode, setPreviewMode] = useState(false);
+  const inputRef = useRef<TextInput>(null);
+  const selectionRef = useRef<{ start: number; end: number }>({
+    start: initialContent.length,
+    end: initialContent.length,
   });
 
-  useEffect(() => {
-    if (editor && customCss) {
-      editor.injectCSS(customCss, "custom-theme");
-    }
-  }, [editor, customCss]);
+  const handleChange = useCallback(
+    (text: string) => {
+      setValue(text);
+      onChange?.(text);
+    },
+    [onChange],
+  );
 
-  useEffect(() => {
-    if (!editor || !onChange) return;
-    
-    const unsubscribe = editor._subscribeToContentUpdate(() => {
-      editor.getHTML().then((html) => {
-        onChange(html);
-      });
-    });
-    
-    return unsubscribe;
-  }, [editor, onChange]);
+  const handleSelectionChange = useCallback(
+    (e: { nativeEvent: { selection: { start: number; end: number } } }) => {
+      selectionRef.current = e.nativeEvent.selection;
+    },
+    [],
+  );
 
-  const handleSetLink = useCallback(() => {
-    if (linkUrl.trim()) {
-      editor.setLink(linkUrl.trim());
-    } else {
-      editor.setLink(null);
-    }
-    setShowLinkModal(false);
-    setLinkUrl("");
-  }, [editor, linkUrl]);
+  const wrapSelection = useCallback(
+    (prefix: string, suffix: string) => {
+      const { start, end } = selectionRef.current;
+      const selected = value.substring(start, end);
+      const newText =
+        value.substring(0, start) + prefix + selected + suffix + value.substring(end);
+      handleChange(newText);
+      const newPos = start + prefix.length + selected.length + suffix.length;
+      selectionRef.current = { start: newPos, end: newPos };
+    },
+    [value, handleChange],
+  );
+
+  const insertAtLineStart = useCallback(
+    (prefix: string) => {
+      const { start } = selectionRef.current;
+      const lineStart = value.lastIndexOf("\n", start - 1) + 1;
+      const lineEnd = value.indexOf("\n", start);
+      const actualEnd = lineEnd === -1 ? value.length : lineEnd;
+      const currentLine = value.substring(lineStart, actualEnd);
+
+      if (currentLine.startsWith(prefix)) {
+        const newText =
+          value.substring(0, lineStart) + currentLine.substring(prefix.length) + value.substring(actualEnd);
+        handleChange(newText);
+        return;
+      }
+
+      const stripped = currentLine.replace(/^(#{1,3}\s|[-*]\s|\d+\.\s|>\s)/, "");
+      const newText = value.substring(0, lineStart) + prefix + stripped + value.substring(actualEnd);
+      handleChange(newText);
+    },
+    [value, handleChange],
+  );
+
+  const handleBold = useCallback(() => wrapSelection("**", "**"), [wrapSelection]);
+  const handleItalic = useCallback(() => wrapSelection("*", "*"), [wrapSelection]);
+  const handleStrikethrough = useCallback(() => wrapSelection("~~", "~~"), [wrapSelection]);
+  const handleCode = useCallback(() => wrapSelection("`", "`"), [wrapSelection]);
+  const handleH1 = useCallback(() => insertAtLineStart("# "), [insertAtLineStart]);
+  const handleH2 = useCallback(() => insertAtLineStart("## "), [insertAtLineStart]);
+  const handleH3 = useCallback(() => insertAtLineStart("### "), [insertAtLineStart]);
+  const handleBulletList = useCallback(() => insertAtLineStart("- "), [insertAtLineStart]);
+  const handleOrderedList = useCallback(() => insertAtLineStart("1. "), [insertAtLineStart]);
+  const handleQuote = useCallback(() => insertAtLineStart("> "), [insertAtLineStart]);
 
   const openLinkModal = useCallback(() => {
-    const currentLink = editor.getEditorState?.()?.activeLink || "";
-    setLinkUrl(currentLink);
+    const { start, end } = selectionRef.current;
+    const selected = value.substring(start, end);
+    setLinkText(selected);
+    setLinkUrl("");
     setShowLinkModal(true);
-  }, [editor]);
+  }, [value]);
+
+  const handleInsertLink = useCallback(() => {
+    const url = linkUrl.trim();
+    if (!url) {
+      setShowLinkModal(false);
+      return;
+    }
+    const text = linkText.trim() || url;
+    const { start, end } = selectionRef.current;
+    const markdown = `[${text}](${url})`;
+    const newText = value.substring(0, start) + markdown + value.substring(end);
+    handleChange(newText);
+    setShowLinkModal(false);
+    setLinkUrl("");
+    setLinkText("");
+  }, [linkUrl, linkText, value, handleChange]);
 
   const styles = makeStyles(colors);
 
   return (
     <View style={styles.container}>
-      <View style={styles.toolbar}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.toolbarContent}
+        style={styles.toolbar}
+      >
         <View style={styles.toolbarGroup}>
           <ToolbarButton
-            onPress={() => editor.undo()}
-            disabled={!editor.getEditorState?.()?.canUndo}
+            onPress={() => setPreviewMode(!previewMode)}
+            isActive={previewMode}
             colors={colors}
             styles={styles}
           >
-            <Undo2Icon size={16} color={colors.mutedForeground} />
-          </ToolbarButton>
-          <ToolbarButton
-            onPress={() => editor.redo()}
-            disabled={!editor.getEditorState?.()?.canRedo}
-            colors={colors}
-            styles={styles}
-          >
-            <Redo2Icon size={16} color={colors.mutedForeground} />
+            {previewMode ? (
+              <EditIcon size={16} color={previewMode ? colors.primary : colors.mutedForeground} />
+            ) : (
+              <EyeIcon size={16} color={colors.mutedForeground} />
+            )}
           </ToolbarButton>
         </View>
 
-        <View style={styles.toolbarDivider} />
+        {!previewMode && (
+          <>
+            <View style={styles.toolbarDivider} />
 
-        <View style={styles.toolbarGroup}>
-          <ToolbarButton
-            onPress={() => editor.toggleHeading(1)}
-            isActive={editor.getEditorState?.()?.headingLevel === 1}
-            colors={colors}
-            styles={styles}
-          >
-            <Heading1Icon size={16} color={colors.mutedForeground} />
-          </ToolbarButton>
-          <ToolbarButton
-            onPress={() => editor.toggleHeading(2)}
-            isActive={editor.getEditorState?.()?.headingLevel === 2}
-            colors={colors}
-            styles={styles}
-          >
-            <Heading2Icon size={16} color={colors.mutedForeground} />
-          </ToolbarButton>
-          <ToolbarButton
-            onPress={() => editor.toggleHeading(3)}
-            isActive={editor.getEditorState?.()?.headingLevel === 3}
-            colors={colors}
-            styles={styles}
-          >
-            <Heading3Icon size={16} color={colors.mutedForeground} />
-          </ToolbarButton>
+            <View style={styles.toolbarGroup}>
+              <ToolbarButton onPress={handleH1} colors={colors} styles={styles}>
+                <Heading1Icon size={16} color={colors.mutedForeground} />
+              </ToolbarButton>
+              <ToolbarButton onPress={handleH2} colors={colors} styles={styles}>
+                <Heading2Icon size={16} color={colors.mutedForeground} />
+              </ToolbarButton>
+              <ToolbarButton onPress={handleH3} colors={colors} styles={styles}>
+                <Heading3Icon size={16} color={colors.mutedForeground} />
+              </ToolbarButton>
+            </View>
+
+            <View style={styles.toolbarDivider} />
+
+            <View style={styles.toolbarGroup}>
+              <ToolbarButton onPress={handleBold} colors={colors} styles={styles}>
+                <BoldIcon size={16} color={colors.mutedForeground} />
+              </ToolbarButton>
+              <ToolbarButton onPress={handleItalic} colors={colors} styles={styles}>
+                <ItalicIcon size={16} color={colors.mutedForeground} />
+              </ToolbarButton>
+              <ToolbarButton onPress={handleStrikethrough} colors={colors} styles={styles}>
+                <StrikethroughIcon size={16} color={colors.mutedForeground} />
+              </ToolbarButton>
+              <ToolbarButton onPress={handleCode} colors={colors} styles={styles}>
+                <CodeIcon size={16} color={colors.mutedForeground} />
+              </ToolbarButton>
+              <ToolbarButton onPress={openLinkModal} colors={colors} styles={styles}>
+                <Link2Icon size={16} color={colors.mutedForeground} />
+              </ToolbarButton>
+            </View>
+
+            <View style={styles.toolbarDivider} />
+
+            <View style={styles.toolbarGroup}>
+              <ToolbarButton onPress={handleBulletList} colors={colors} styles={styles}>
+                <ListIcon size={16} color={colors.mutedForeground} />
+              </ToolbarButton>
+              <ToolbarButton onPress={handleOrderedList} colors={colors} styles={styles}>
+                <ListOrderedIcon size={16} color={colors.mutedForeground} />
+              </ToolbarButton>
+              <ToolbarButton onPress={handleQuote} colors={colors} styles={styles}>
+                <QuoteIcon size={16} color={colors.mutedForeground} />
+              </ToolbarButton>
+            </View>
+          </>
+        )}
+      </ScrollView>
+
+      {previewMode ? (
+        <ScrollView
+          style={[styles.previewWrapper, { borderColor: colors.border, backgroundColor: colors.background }]}
+          contentContainerStyle={styles.previewContent}
+        >
+          {value.trim() ? (
+            <MarkdownRenderer content={value} />
+          ) : (
+            <Text style={[styles.previewPlaceholder, { color: colors.mutedForeground }]}>
+              {placeholder}
+            </Text>
+          )}
+        </ScrollView>
+      ) : (
+        <View style={[styles.editorWrapper, { borderColor: colors.border, backgroundColor: colors.background }]}>
+          <TextInput
+            ref={inputRef}
+            value={value}
+            onChangeText={handleChange}
+            onSelectionChange={handleSelectionChange}
+            placeholder={placeholder}
+            placeholderTextColor={colors.mutedForeground}
+            autoFocus={autoFocus}
+            multiline
+            textAlignVertical="top"
+            style={[styles.editor, { color: colors.foreground }]}
+          />
         </View>
-
-        <View style={styles.toolbarDivider} />
-
-        <View style={styles.toolbarGroup}>
-          <ToolbarButton
-            onPress={() => editor.toggleBold()}
-            isActive={editor.getEditorState?.()?.isBoldActive}
-            colors={colors}
-            styles={styles}
-          >
-            <BoldIcon size={16} color={colors.mutedForeground} />
-          </ToolbarButton>
-          <ToolbarButton
-            onPress={() => editor.toggleItalic()}
-            isActive={editor.getEditorState?.()?.isItalicActive}
-            colors={colors}
-            styles={styles}
-          >
-            <ItalicIcon size={16} color={colors.mutedForeground} />
-          </ToolbarButton>
-          <ToolbarButton
-            onPress={() => editor.toggleStrike()}
-            isActive={editor.getEditorState?.()?.isStrikeActive}
-            colors={colors}
-            styles={styles}
-          >
-            <StrikethroughIcon size={16} color={colors.mutedForeground} />
-          </ToolbarButton>
-          <ToolbarButton
-            onPress={() => editor.toggleCode()}
-            isActive={editor.getEditorState?.()?.isCodeActive}
-            colors={colors}
-            styles={styles}
-          >
-            <CodeIcon size={16} color={colors.mutedForeground} />
-          </ToolbarButton>
-          <ToolbarButton
-            onPress={openLinkModal}
-            isActive={editor.getEditorState?.()?.isLinkActive}
-            colors={colors}
-            styles={styles}
-          >
-            <Link2Icon size={16} color={colors.mutedForeground} />
-          </ToolbarButton>
-        </View>
-
-        <View style={styles.toolbarDivider} />
-
-        <View style={styles.toolbarGroup}>
-          <ToolbarButton
-            onPress={() => editor.toggleBulletList()}
-            isActive={editor.getEditorState?.()?.isBulletListActive}
-            colors={colors}
-            styles={styles}
-          >
-            <ListIcon size={16} color={colors.mutedForeground} />
-          </ToolbarButton>
-          <ToolbarButton
-            onPress={() => editor.toggleOrderedList()}
-            isActive={editor.getEditorState?.()?.isOrderedListActive}
-            colors={colors}
-            styles={styles}
-          >
-            <ListOrderedIcon size={16} color={colors.mutedForeground} />
-          </ToolbarButton>
-          <ToolbarButton
-            onPress={() => editor.toggleBlockquote()}
-            isActive={editor.getEditorState?.()?.isBlockquoteActive}
-            colors={colors}
-            styles={styles}
-          >
-            <QuoteIcon size={16} color={colors.mutedForeground} />
-          </ToolbarButton>
-        </View>
-      </View>
-
-      <View style={[styles.editorWrapper, { borderColor: colors.border, backgroundColor: colors.background }]}>
-        <RichText editor={editor} />
-      </View>
+      )}
 
       <Modal
         visible={showLinkModal}
@@ -327,6 +261,13 @@ export function RichTextEditor({
             </View>
             <TextInput
               style={styles.linkInput}
+              value={linkText}
+              onChangeText={setLinkText}
+              placeholder="链接文字"
+              placeholderTextColor={colors.mutedForeground}
+            />
+            <TextInput
+              style={styles.linkInput}
               value={linkUrl}
               onChangeText={setLinkUrl}
               placeholder="输入链接地址"
@@ -342,7 +283,7 @@ export function RichTextEditor({
               >
                 <Text style={styles.linkCancelText}>取消</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.linkConfirmBtn} onPress={handleSetLink}>
+              <TouchableOpacity style={styles.linkConfirmBtn} onPress={handleInsertLink}>
                 <Text style={styles.linkConfirmText}>确定</Text>
               </TouchableOpacity>
             </View>
@@ -385,14 +326,16 @@ const makeStyles = (colors: ReturnType<typeof useColors>) =>
       flex: 1,
     },
     toolbar: {
+      maxHeight: 44,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+      backgroundColor: colors.muted,
+    },
+    toolbarContent: {
       flexDirection: "row",
-      flexWrap: "wrap",
       alignItems: "center",
       paddingHorizontal: 8,
       paddingVertical: 6,
-      backgroundColor: colors.muted,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.border,
       gap: 2,
     },
     toolbarGroup: {
@@ -425,6 +368,26 @@ const makeStyles = (colors: ReturnType<typeof useColors>) =>
       borderRadius: radius.lg,
       overflow: "hidden",
     },
+    editor: {
+      flex: 1,
+      fontSize: 15,
+      lineHeight: 24,
+      padding: 12,
+      textAlignVertical: "top",
+    },
+    previewWrapper: {
+      flex: 1,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderRadius: radius.lg,
+      overflow: "hidden",
+    },
+    previewContent: {
+      padding: 12,
+    },
+    previewPlaceholder: {
+      fontSize: 15,
+      lineHeight: 24,
+    },
     modalOverlay: {
       flex: 1,
       backgroundColor: "rgba(0,0,0,0.5)",
@@ -456,12 +419,13 @@ const makeStyles = (colors: ReturnType<typeof useColors>) =>
       paddingVertical: 10,
       fontSize: 15,
       color: colors.foreground,
-      marginBottom: 16,
+      marginBottom: 12,
     },
     linkModalActions: {
       flexDirection: "row",
       justifyContent: "flex-end",
       gap: 8,
+      marginTop: 4,
     },
     linkCancelBtn: {
       paddingHorizontal: 16,

@@ -945,8 +945,7 @@ const makeStyles = (colors: ThemeColors) =>
     },
     // Tabs
     detailTabRow: {
-      flexDirection: "row",
-      alignItems: "center",
+      flexDirection: "column",
       gap: 8,
       paddingHorizontal: 16,
       paddingVertical: 12,
@@ -974,7 +973,6 @@ const makeStyles = (colors: ThemeColors) =>
     },
     tabBtnTextActive: { color: colors.primaryForeground },
     detailSearch: {
-      flex: 1,
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
