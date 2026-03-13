@@ -12,10 +12,11 @@ import {
   XCircle,
   Brain,
   Wrench,
+  OctagonX,
 } from "lucide-react";
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { useTranslation } from "react-i18next";
-import type { Part, TextPart, ReasoningPart, ToolCallPart, CitationPart, MindmapPart } from "@readany/core/types/message";
+import type { Part, TextPart, ReasoningPart, ToolCallPart, CitationPart, MindmapPart, AbortedPart } from "@readany/core/types/message";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
 const TEXT_RENDER_THROTTLE_MS = 100;
@@ -75,11 +76,11 @@ export function PartRenderer({ part, citations, onCitationClick }: PartProps) {
     case "tool_call":
       return <ToolCallPartView part={part} />;
     case "citation":
-      // Don't render citation parts as standalone cards
-      // Citations are rendered inline in text via MarkdownRenderer
       return null;
     case "mindmap":
       return <MindmapPartView part={part} />;
+    case "aborted":
+      return <AbortedPartView part={part} />;
     default:
       return null;
   }
@@ -314,6 +315,15 @@ function MindmapPartView({ part }: { part: MindmapPart }) {
       <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">{t("streaming.loadingMindmap")}</div>}>
         <LazyMindmapView markdown={part.markdown} title={part.title} />
       </Suspense>
+    </div>
+  );
+}
+
+function AbortedPartView({ part }: { part: AbortedPart }) {
+  return (
+    <div className="my-2 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+      <OctagonX className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+      <span className="text-sm text-amber-600 dark:text-amber-400">{part.reason}</span>
     </div>
   );
 }

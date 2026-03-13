@@ -4,17 +4,11 @@ import { useSettingsStore } from "../stores/settings-store";
 import { getSkills as getDbSkills } from "../db/database";
 import { getBuiltinSkills } from "../ai/skills/builtin-skills";
 import { getAvailableTools } from "../ai/tools";
-import type { AttachedQuote, Book, SemanticContext, Skill, Thread, Part, TextPart, ToolCallPart, MessageV2, ReasoningPart, CitationPart } from "../types";
+import type { AttachedQuote, Book, SemanticContext, Skill, Thread, Part, TextPart, ToolCallPart, ReasoningPart, CitationPart, MessageV2 } from "../types";
 import { useCallback, useRef, useState } from "react";
-import {
-  createTextPart,
-  createReasoningPart,
-  createToolCallPart,
-  createQuotePart,
-  createMindmapPart,
-  createCitationPart,
-} from "../types/message";
+import { createTextPart, createReasoningPart, createToolCallPart, createQuotePart, createMindmapPart, createCitationPart, createAbortedPart } from "../types/message";
 import type { MindmapPart } from "../types/message";
+import i18n from "../i18n";
 
 /** Type guard for mindmap tool result */
 function isMindmapResult(result: unknown): result is { type: "mindmap"; title: string; markdown: string } {
@@ -363,6 +357,94 @@ export function useStreamingChat(options?: StreamingChatOptions) {
             });
             setStreaming(false);
           },
+          onAbort: async () => {
+            for (const part of currentParts) {
+              if (part.status === "running") {
+                if (part.type === "tool_call") {
+                  part.status = "error";
+                  (part as ToolCallPart).error = i18n.t("streaming.aborted");
+                } else {
+                  part.status = "completed";
+                }
+                part.updatedAt = Date.now();
+              }
+            }
+
+            const abortedPart = createAbortedPart(i18n.t("streaming.aborted"));
+            currentParts.push(abortedPart);
+
+            const textContent = currentParts
+              .filter((p) => p.type === "text")
+              .map((p) => (p as TextPart).text)
+              .join("\n");
+
+            const reasoning = currentParts
+              .filter((p) => p.type === "reasoning")
+              .map((p) => ({
+                id: p.id,
+                type: (p as ReasoningPart).thinkingType || "thinking",
+                content: (p as ReasoningPart).text,
+                timestamp: p.createdAt,
+              }));
+
+            const partsOrder = currentParts.map((p) => {
+              const base = {
+                type: p.type as "text" | "reasoning" | "tool_call" | "citation" | "mindmap",
+                id: p.id,
+              };
+              if (p.type === "text") {
+                return { ...base, text: (p as TextPart).text };
+              }
+              if (p.type === "mindmap") {
+                return {
+                  ...base,
+                  title: (p as MindmapPart).title,
+                  markdown: (p as MindmapPart).markdown,
+                };
+              }
+              if (p.type === "citation") {
+                return {
+                  ...base,
+                  bookId: (p as CitationPart).bookId,
+                  chapterTitle: (p as CitationPart).chapterTitle,
+                  chapterIndex: (p as CitationPart).chapterIndex,
+                  cfi: (p as CitationPart).cfi,
+                  text: (p as CitationPart).text,
+                };
+              }
+              return base;
+            });
+
+            const abortedMessage = {
+              id: messageId,
+              threadId: thread.id,
+              role: "assistant" as const,
+              content: textContent,
+              parts: currentParts,
+              toolCalls: currentParts
+                .filter((p) => p.type === "tool_call")
+                .map((p) => ({
+                  id: p.id,
+                  name: (p as ToolCallPart).name,
+                  args: (p as ToolCallPart).args,
+                  result: (p as ToolCallPart).result,
+                  status: (p as ToolCallPart).status,
+                })),
+              reasoning: reasoning.length > 0 ? reasoning : undefined,
+              partsOrder: partsOrder.length > 0 ? partsOrder : undefined,
+              createdAt: Date.now(),
+            };
+
+            setState((prev) => ({ ...prev, currentStep: "idle" }));
+            await addMessage(thread.id, abortedMessage as any);
+
+            setState({
+              isStreaming: false,
+              currentMessage: null,
+              currentStep: "idle",
+            });
+            setStreaming(false);
+          },
           onToolCall: (name, args) => {
             if (currentTextPart) {
               currentTextPart.status = "completed";
@@ -472,13 +554,7 @@ export function useStreamingChat(options?: StreamingChatOptions) {
 
   const stopStream = useCallback(() => {
     streamingRef.current?.abort();
-    setState({
-      isStreaming: false,
-      currentMessage: null,
-      currentStep: "idle",
-    });
-    setStreaming(false);
-  }, [setStreaming]);
+  }, []);
 
   return {
     ...state,

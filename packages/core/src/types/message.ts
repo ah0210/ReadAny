@@ -61,7 +61,13 @@ export interface MindmapPart extends BasePart {
   markdown: string;
 }
 
-export type Part = TextPart | ReasoningPart | ToolCallPart | CitationPart | QuotePart | MindmapPart;
+/** A system message indicating generation was aborted by user */
+export interface AbortedPart extends BasePart {
+  type: "aborted";
+  reason: string;
+}
+
+export type Part = TextPart | ReasoningPart | ToolCallPart | CitationPart | QuotePart | MindmapPart | AbortedPart;
 
 export interface MessageV2 {
   id: string;
@@ -199,4 +205,18 @@ export function createMindmapPart(title: string, markdown: string): MindmapPart 
     status: "completed",
     createdAt: Date.now(),
   };
+}
+
+export function createAbortedPart(reason: string): AbortedPart {
+  return {
+    id: `aborted-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    type: "aborted",
+    reason,
+    status: "completed",
+    createdAt: Date.now(),
+  };
+}
+
+export function isAbortedPart(part: Part): part is AbortedPart {
+  return part.type === "aborted";
 }

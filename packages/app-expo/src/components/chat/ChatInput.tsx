@@ -19,7 +19,8 @@ interface ChatInputProps {
   placeholder?: string;
 }
 
-const MAX_INPUT_HEIGHT = 120;
+const MAX_INPUT_HEIGHT = 100;
+const INPUT_PADDING_VERTICAL = 16;
 
 export function ChatInput({
   onSend,
@@ -48,7 +49,9 @@ export function ChatInput({
   }, [text, deepThinking, quotes, onSend]);
 
   const handleContentSizeChange = useCallback((e: any) => {
-    const h = Math.min(e.nativeEvent.contentSize.height, MAX_INPUT_HEIGHT);
+    const contentHeight = e.nativeEvent.contentSize.height;
+    const totalHeight = contentHeight + INPUT_PADDING_VERTICAL;
+    const h = Math.min(totalHeight, MAX_INPUT_HEIGHT);
     setInputHeight(Math.max(36, h));
   }, []);
 

@@ -316,7 +316,8 @@ export function ChatPanel({ book, onNavigateToCitation }: ChatPanelProps) {
       <div className="shrink-0 px-2 pb-2 pt-1">
         <ChatInput
           onSend={handleSend}
-          disabled={isStreaming}
+          onStop={stopStream}
+          isStreaming={isStreaming}
           placeholder={t("chat.askBookPlaceholder")}
           quotes={attachedQuotes}
           onRemoveQuote={handleRemoveQuote}

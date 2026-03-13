@@ -18,6 +18,7 @@ import {
 import { useNavigation } from "@react-navigation/native";
 import { readingStatsService } from "@readany/core/stats";
 import type { DailyStats, OverallStats, PeriodBookStats, TrendPoint } from "@readany/core/stats";
+import { getPlatformService } from "@readany/core/services";
 /**
  * StatsScreen — Full reading stats page matching Tauri mobile MobileStatsPage.
  * Features: stats cards, heatmap/bar chart toggle, trend chart, period book list,
@@ -28,6 +29,7 @@ import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Dimensions,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -306,7 +308,13 @@ function TrendChart({ data }: { data: TrendPoint[] }) {
 
 // ────────────────── Period Book List ──────────────────
 
-function PeriodBookList({ books }: { books: PeriodBookStats[] }) {
+function PeriodBookList({
+  books,
+  resolvedCovers,
+}: {
+  books: PeriodBookStats[];
+  resolvedCovers: Map<string, string>;
+}) {
   const { t } = useTranslation();
   const colors = useColors();
   const s = makeStyles(colors);
@@ -319,32 +327,40 @@ function PeriodBookList({ books }: { books: PeriodBookStats[] }) {
 
   return (
     <View style={{ gap: 6 }}>
-      {books.map((book) => (
-        <View key={book.bookId} style={s.bookRow}>
-          {/* Cover placeholder */}
-          <View style={s.bookCoverPlaceholder}>
-            <Text style={s.bookCoverLetter}>{book.title.charAt(0)}</Text>
-          </View>
-          {/* Info */}
-          <View style={s.bookInfo}>
-            <View style={s.bookTitleRow}>
-              <Text style={s.bookTitle} numberOfLines={1}>
-                {book.title}
-              </Text>
-              <Text style={s.bookTime}>{formatTime(book.totalTime)}</Text>
-            </View>
-            {/* Progress bar */}
-            <View style={s.progressRow}>
-              <View style={s.progressTrack}>
-                <View
-                  style={[s.progressFill, { width: `${Math.min(book.progress * 100, 100)}%` }]}
-                />
+      {books.map((book) => {
+        const coverUrl = resolvedCovers.get(book.bookId) || book.coverUrl;
+        return (
+          <View key={book.bookId} style={s.bookRow}>
+            {/* Cover */}
+            {coverUrl ? (
+              <Image source={{ uri: coverUrl }} style={s.bookCover} resizeMode="cover" />
+            ) : (
+              <View style={s.bookCoverPlaceholder}>
+                <Text style={s.bookCoverLetter}>{book.title.charAt(0)}</Text>
               </View>
-              <Text style={s.progressPercent}>{Math.round(book.progress * 100)}%</Text>
+            )}
+            {/* Info */}
+            <View style={s.bookInfo}>
+              <View style={s.bookTitleRow}>
+                <Text style={s.bookTitle} numberOfLines={1}>
+                  {book.title}
+                </Text>
+                <Text style={s.bookTime}>{formatTime(book.totalTime)}</Text>
+              </View>
+              {book.author && <Text style={s.bookAuthor}>{book.author}</Text>}
+              {/* Progress bar */}
+              <View style={s.progressRow}>
+                <View style={s.progressTrack}>
+                  <View
+                    style={[s.progressFill, { width: `${Math.min(book.progress * 100, 100)}%` }]}
+                  />
+                </View>
+                <Text style={s.progressPercent}>{Math.round(book.progress * 100)}%</Text>
+              </View>
             </View>
           </View>
-        </View>
-      ))}
+        );
+      })}
     </View>
   );
 }
@@ -374,6 +390,7 @@ export default function StatsScreen() {
   const [chartDate, setChartDate] = useState<Date>(() => getWeekStart(new Date()));
   const [chartData, setChartData] = useState<DailyStats[]>([]);
   const [periodBooks, setPeriodBooks] = useState<PeriodBookStats[]>([]);
+  const [resolvedCovers, setResolvedCovers] = useState<Map<string, string>>(new Map());
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -401,6 +418,44 @@ export default function StatsScreen() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Resolve cover URLs from relative paths to absolute paths
+  useEffect(() => {
+    const resolveCovers = async () => {
+      if (periodBooks.length === 0) return;
+      const newMap = new Map<string, string>();
+      try {
+        const platform = getPlatformService();
+        const appData = await platform.getAppDataDir();
+
+        for (const book of periodBooks) {
+          if (!book.coverUrl) continue;
+
+          if (
+            book.coverUrl.startsWith("http") ||
+            book.coverUrl.startsWith("blob") ||
+            book.coverUrl.startsWith("file")
+          ) {
+            newMap.set(book.bookId, book.coverUrl);
+            continue;
+          }
+
+          try {
+            const absPath = await platform.joinPath(appData, book.coverUrl);
+            newMap.set(book.bookId, absPath);
+          } catch {
+            // If resolution fails, skip this cover
+          }
+        }
+
+        setResolvedCovers(newMap);
+      } catch (err) {
+        console.error("Failed to resolve cover URLs:", err);
+      }
+    };
+
+    resolveCovers();
+  }, [periodBooks]);
 
   // Load chart data when mode/date changes
   useEffect(() => {
@@ -628,7 +683,7 @@ export default function StatsScreen() {
         <View style={s.section}>
           <View style={s.sectionCard}>
             <Text style={s.sectionCardTitle}>{t("stats.periodBooks", "期间阅读书籍")}</Text>
-            <PeriodBookList books={periodBooks} />
+            <PeriodBookList books={periodBooks} resolvedCovers={resolvedCovers} />
           </View>
         </View>
 
@@ -819,6 +874,12 @@ const makeStyles = (colors: ThemeColors) =>
       alignItems: "center",
       justifyContent: "center",
     },
+    bookCover: {
+      width: 28,
+      height: 40,
+      borderRadius: radius.sm,
+      backgroundColor: colors.muted,
+    },
     bookCoverLetter: { fontSize: 10, color: colors.mutedForeground },
     bookInfo: { flex: 1, gap: 4 },
     bookTitleRow: {
@@ -832,6 +893,10 @@ const makeStyles = (colors: ThemeColors) =>
       fontWeight: fontWeight.medium,
       color: colors.foreground,
       flex: 1,
+    },
+    bookAuthor: {
+      fontSize: 9,
+      color: colors.mutedForeground,
     },
     bookTime: { fontSize: 10, color: colors.mutedForeground },
     progressRow: { flexDirection: "row", alignItems: "center", gap: 6 },

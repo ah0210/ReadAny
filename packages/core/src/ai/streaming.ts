@@ -27,6 +27,10 @@ export interface StreamingOptions {
     fullText: string,
     toolCalls?: Array<{ name: string; args: Record<string, unknown>; result?: unknown }>,
   ) => void;
+  onAbort?: (
+    fullText: string,
+    toolCalls?: Array<{ name: string; args: Record<string, unknown>; result?: unknown }>,
+  ) => void;
   onError: (error: Error) => void;
   onToolCall?: (toolName: string, args: Record<string, unknown>) => void;
   onToolResult?: (toolName: string, result: unknown) => void;
@@ -87,7 +91,10 @@ export class StreamingChat {
       );
 
       for await (const event of stream) {
-        if (this.aborted) return;
+        if (this.aborted) {
+          options.onAbort?.(fullText, toolCalls.length > 0 ? toolCalls : undefined);
+          return;
+        }
 
         switch (event.type) {
           case "token":

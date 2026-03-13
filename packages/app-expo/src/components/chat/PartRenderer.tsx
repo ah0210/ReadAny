@@ -1,8 +1,9 @@
-import { BrainIcon, CheckIcon, ChevronDownIcon, XIcon } from "@/components/ui/Icon";
+import { BrainIcon, CheckIcon, ChevronDownIcon, OctagonXIcon, XIcon } from "@/components/ui/Icon";
 import { useThrottledValue } from "@/hooks";
 import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
 import type {
+  AbortedPart,
   MindmapPart,
   Part,
   ReasoningPart,
@@ -34,6 +35,8 @@ export function PartRenderer({ part }: PartProps) {
       return null;
     case "mindmap":
       return <MindmapPartView part={part} />;
+    case "aborted":
+      return <AbortedPartView part={part} />;
     default:
       return null;
   }
@@ -238,6 +241,29 @@ function MindmapPartView({ part }: { part: MindmapPart }) {
   );
 }
 
+function AbortedPartView({ part }: { part: AbortedPart }) {
+  const colors = useColors();
+  return (
+    <View
+      style={{
+        marginVertical: 8,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: radius.md,
+        borderWidth: 1,
+        borderColor: withOpacity(colors.amber, 0.3),
+        backgroundColor: withOpacity(colors.amber, 0.1),
+      }}
+    >
+      <OctagonXIcon size={16} color={colors.amber} />
+      <Text style={{ fontSize: fs.sm, color: colors.amber }}>{part.reason}</Text>
+    </View>
+  );
+}
+
 const makeReasoningStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: {
@@ -265,7 +291,7 @@ const makeReasoningStyles = (colors: ThemeColors) =>
       width: 10,
       height: 10,
       borderRadius: 5,
-      backgroundColor: colors.mutedForeground,
+      backgroundColor: colors.primary,
       opacity: 0.6,
     },
     headerText: {

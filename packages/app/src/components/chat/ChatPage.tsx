@@ -279,7 +279,11 @@ export function ChatPage() {
 
         {/* Input always at bottom with consistent position */}
         <div className="shrink-0 px-4 pb-3 pt-2">
-          <ChatInput onSend={handleSend} disabled={isStreaming} />
+          <ChatInput
+            onSend={handleSend}
+            onStop={stopStream}
+            isStreaming={isStreaming}
+          />
         </div>
       </div>
 

@@ -295,6 +295,12 @@ export const Loader2Icon = icon(() => (
   <Path d="M21 12a9 9 0 1 1-6.219-8.56" />
 ));
 
+export const WrenchIcon = icon(() => (
+  <>
+    <Path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+  </>
+));
+
 // Additional icons for features
 export const HashIcon = icon(() => (
   <>
@@ -336,6 +342,14 @@ export const StopCircleIcon = icon(() => (
   <>
     <Circle cx="12" cy="12" r="10" />
     <Rect x="9" y="9" width="6" height="6" rx="1" />
+  </>
+));
+
+export const OctagonXIcon = icon(() => (
+  <>
+    <Path d="M7.86 2h8.28L22 7.86v8.28L16.14 22H7.86L2 16.14V7.86L7.86 2z" />
+    <Path d="m15 9-6 6" />
+    <Path d="m9 9 6 6" />
   </>
 ));
 

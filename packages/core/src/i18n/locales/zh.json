@@ -82,7 +82,8 @@
     "reasoningRunning": "正在思考...",
     "reasoningDone": "思考过程",
     "scrollToBottom": "回到底部",
-    "loadingMindmap": "加载思维导图..."
+    "loadingMindmap": "加载思维导图...",
+    "aborted": "用户取消了生成"
   },
   "toolLabels": {
     "ragSearch": "搜索书籍内容",

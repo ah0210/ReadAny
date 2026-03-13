@@ -84,7 +84,8 @@
     "reasoningRunning": "Thinking...",
     "reasoningDone": "Reasoning",
     "scrollToBottom": "Scroll to bottom",
-    "loadingMindmap": "Loading mindmap..."
+    "loadingMindmap": "Loading mindmap...",
+    "aborted": "Generation stopped by user"
   },
   "toolLabels": {
     "ragSearch": "Searching book content",

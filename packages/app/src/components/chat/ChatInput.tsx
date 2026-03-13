@@ -9,7 +9,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ArrowUp, Brain, Paperclip, Quote, X } from "lucide-react";
+import { ArrowUp, Brain, Paperclip, Quote, Square, X } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { AttachedQuote } from "@readany/core/types";
@@ -17,17 +17,19 @@ export type { AttachedQuote };
 
 interface ChatInputProps {
   onSend: (content: string, deepThinking?: boolean, quotes?: AttachedQuote[]) => void;
+  onStop?: () => void;
+  isStreaming?: boolean;
   disabled?: boolean;
   placeholder?: string;
   showDeepThinking?: boolean;
-  /** Externally controlled attached quotes */
   quotes?: AttachedQuote[];
-  /** Callback when a quote is removed */
   onRemoveQuote?: (id: string) => void;
 }
 
 export function ChatInput({
   onSend,
+  onStop,
+  isStreaming,
   disabled,
   placeholder,
   showDeepThinking = true,
@@ -154,14 +156,25 @@ export function ChatInput({
               </button>
             )}
           </div>
-          <Button
-            size="icon"
-            disabled={disabled || (!value.trim() && quotes.length === 0)}
-            onClick={() => handleSend()}
-            className="size-7 rounded-full"
-          >
-            <ArrowUp className="size-3.5" />
-          </Button>
+          {isStreaming ? (
+            <Button
+              size="icon"
+              variant="destructive"
+              onClick={onStop}
+              className="size-7 rounded-full"
+            >
+              <Square className="size-3" />
+            </Button>
+          ) : (
+            <Button
+              size="icon"
+              disabled={disabled || (!value.trim() && quotes.length === 0)}
+              onClick={() => handleSend()}
+              className="size-7 rounded-full"
+            >
+              <ArrowUp className="size-3.5" />
+            </Button>
+          )}
         </div>
       </div>
       {deepThinking && (
