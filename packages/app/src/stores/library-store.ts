@@ -344,28 +344,15 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       // cache miss is fine
     }
 
-    // Also restore saved tags (may include empty tags not yet assigned to books)
-    try {
-      const savedTags = await loadFromFS<string[]>("library-tags");
-      if (savedTags && savedTags.length > 0) {
-        set((state) => {
-          const merged = new Set([...state.allTags, ...savedTags]);
-          return { allTags: [...merged].sort() };
-        });
-      }
-    } catch { /* no saved tags */ }
-
     // 2) Full path: init DB and load from SQLite (source of truth)
     try {
       await db.initDatabase();
       const books = await db.getBooks();
       const allTags = computeTags(books);
-      // Merge with any user-created tags from FS
-      const savedTags = get().allTags;
-      const merged = new Set([...allTags, ...savedTags]);
-      set({ books, isLoaded: true, allTags: [...merged].sort() });
+      set({ books, isLoaded: true, allTags });
       // Update the cache for next launch
       debouncedSave("library-books", books);
+      debouncedSave("library-tags", allTags);
     } catch (err) {
       console.error("Failed to load books from database:", err);
       set({ isLoaded: true });

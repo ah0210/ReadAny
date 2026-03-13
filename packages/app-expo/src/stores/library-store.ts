@@ -112,25 +112,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     }
 
     try {
-      const savedTags = await loadFromFS<string[]>("library-tags");
-      if (savedTags && savedTags.length > 0) {
-        set((state) => {
-          const merged = new Set([...state.allTags, ...savedTags]);
-          return { allTags: [...merged].sort() };
-        });
-      }
-    } catch {
-      /* no saved tags */
-    }
-
-    try {
       await db.initDatabase();
       const books = await db.getBooks();
       const allTags = computeTags(books);
-      const savedTags = get().allTags;
-      const merged = new Set([...allTags, ...savedTags]);
-      set({ books, isLoaded: true, allTags: [...merged].sort() });
+      set({ books, isLoaded: true, allTags });
       debouncedSave("library-books", books);
+      debouncedSave("library-tags", allTags);
     } catch (err) {
       console.error("Failed to load books from database:", err);
       set({ isLoaded: true });

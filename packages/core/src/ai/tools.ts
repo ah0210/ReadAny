@@ -1082,7 +1082,7 @@ function createTagBooksTool(): ToolDefinition {
         results,
         taggedCount: results.filter((r) => r.success).length,
       };
-      if (result.taggedCount > 0) emitLibraryChanged();
+      emitLibraryChanged();
       return result;
     },
   };
@@ -1143,7 +1143,7 @@ function createManageBookTagsTool(): ToolDefinition {
             affectedCount++;
           }
         }
-        if (affectedCount > 0) emitLibraryChanged();
+        emitLibraryChanged();
         return { success: true, action: "rename", oldTag, newTag, affectedBooks: affectedCount };
       }
 
@@ -1160,7 +1160,7 @@ function createManageBookTagsTool(): ToolDefinition {
             affectedCount++;
           }
         }
-        if (affectedCount > 0) emitLibraryChanged();
+        emitLibraryChanged();
         return { success: true, action: "delete", tag, affectedBooks: affectedCount };
       }
 

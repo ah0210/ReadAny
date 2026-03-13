@@ -3,6 +3,7 @@ import { useLibraryStore } from "@/stores/library-store";
 import { BarChart3, BookOpen, ChevronDown, ChevronRight, ChevronsUpDown, Hash, MessageSquare, MoreHorizontal, NotebookPen, Pencil, Plus, Puzzle, Search, Settings, Trash2, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 interface NavItem {
   tabType: "home" | "chat" | "notes" | "skills";
@@ -29,7 +30,6 @@ export function HomeSidebar() {
   const [newTagName, setNewTagName] = useState("");
   const [editingTag, setEditingTag] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
-  const [tagMenuOpen, setTagMenuOpen] = useState<string | null>(null);
   const [isTagsExpanded, setIsTagsExpanded] = useState(false);
   const newTagInputRef = useRef<HTMLInputElement>(null);
 
@@ -168,45 +168,37 @@ export function HomeSidebar() {
                             <Hash size={11} className="shrink-0 opacity-50" />
                             <span className="truncate">{tag}</span>
                           </button>
-                          {/* Tag context menu trigger */}
-                          <button
-                            type="button"
-                            className="absolute right-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover/tag:opacity-100"
-                            onClick={(e) => { e.stopPropagation(); setTagMenuOpen(tagMenuOpen === tag ? null : tag); }}
-                          >
-                            <MoreHorizontal size={12} />
-                          </button>
-                          {/* Tag context menu */}
-                          {tagMenuOpen === tag && (
-                            <>
-                              <div className="fixed inset-0 z-50" onClick={() => setTagMenuOpen(null)} />
-                              <div className="absolute right-0 top-6 z-50 min-w-28 rounded-lg border bg-popover p-1 shadow-lg">
-                                <button
-                                  type="button"
-                                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-foreground hover:bg-muted"
-                                  onClick={() => {
-                                    setTagMenuOpen(null);
-                                    setEditingTag(tag);
-                                    setEditingName(tag);
-                                  }}
-                                >
-                                  <Pencil size={12} />
-                                  {t("sidebar.renameTag")}
-                                </button>
-                                <button
-                                  type="button"
-                                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-destructive hover:bg-destructive/10"
-                                  onClick={() => {
-                                    setTagMenuOpen(null);
-                                    removeTag(tag);
-                                  }}
-                                >
-                                  <Trash2 size={12} />
-                                  {t("sidebar.deleteTag")}
-                                </button>
-                              </div>
-                            </>
-                          )}
+                          {/* Tag context menu using DropdownMenu (Portal-based, won't be clipped) */}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                className="absolute right-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover/tag:opacity-100"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <MoreHorizontal size={12} />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="min-w-28">
+                              <DropdownMenuItem
+                                className="text-xs"
+                                onClick={() => {
+                                  setEditingTag(tag);
+                                  setEditingName(tag);
+                                }}
+                              >
+                                <Pencil size={12} className="mr-2" />
+                                {t("sidebar.renameTag")}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-xs text-destructive focus:text-destructive"
+                                onClick={() => removeTag(tag)}
+                              >
+                                <Trash2 size={12} className="mr-2" />
+                                {t("sidebar.deleteTag")}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </>
                       )}
                     </div>
