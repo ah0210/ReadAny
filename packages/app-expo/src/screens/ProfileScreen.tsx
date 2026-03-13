@@ -89,6 +89,7 @@ function MiniHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
   const DAYS_PER_WEEK = 7;
   const GAP = 2;
   const [containerWidth, setContainerWidth] = useState(0);
+  const [selectedCell, setSelectedCell] = useState<{ date: string; time: number; x: number; y: number } | null>(null);
 
   // Calculate cell size based on container width
   // containerWidth = WEEKS * CELL + (WEEKS - 1) * GAP
@@ -101,7 +102,7 @@ function MiniHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
     for (const d of dailyStats) statsMap.set(d.date, d.totalTime);
 
     const today = new Date();
-    const result: { col: number; row: number; intensity: number }[] = [];
+    const result: { col: number; row: number; intensity: number; date: string; time: number }[] = [];
     const maxTime = Math.max(1, ...dailyStats.map((d) => d.totalTime));
 
     for (let w = WEEKS - 1; w >= 0; w--) {
@@ -114,6 +115,8 @@ function MiniHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
           col: WEEKS - 1 - w,
           row: d,
           intensity: time > 0 ? Math.min(1, time / maxTime) : 0,
+          date: key,
+          time,
         });
       }
     }
@@ -128,6 +131,46 @@ function MiniHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
     return withOpacity(themeColors.emerald, 0.9);
   };
 
+  const formatDisplayDate = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+  };
+
+  const formatTime = (minutes: number) => {
+    if (minutes < 60) return `${Math.round(minutes)}分钟`;
+    return `${(minutes / 60).toFixed(1)}小时`;
+  };
+
+  const handleCellPress = (cell: { date: string; time: number }, col: number, row: number) => {
+    const x = col * (CELL + GAP) + CELL / 2;
+    const y = row * (CELL + GAP) + CELL / 2;
+    if (selectedCell?.date === cell.date) {
+      setSelectedCell(null);
+    } else {
+      setSelectedCell({ ...cell, x, y });
+      setTimeout(() => setSelectedCell(null), 1000);
+    }
+  };
+
+  // Calculate tooltip position with boundary detection
+  const getTooltipStyle = () => {
+    if (!selectedCell || containerWidth === 0) return null;
+    const TOOLTIP_WIDTH = 80;
+    const TOOLTIP_HEIGHT = 24;
+    
+    let left = selectedCell.x - TOOLTIP_WIDTH / 2;
+    let top = selectedCell.y - TOOLTIP_HEIGHT - 8;
+    
+    // Boundary detection
+    if (left < 4) left = 4;
+    if (left + TOOLTIP_WIDTH > containerWidth - 4) left = containerWidth - TOOLTIP_WIDTH - 4;
+    if (top < 4) top = selectedCell.y + CELL + 4; // Show below if no space above
+    
+    return { left, top };
+  };
+
+  const tooltipStyle = getTooltipStyle();
+
   return (
     <View
       style={s.heatmapContainer}
@@ -136,7 +179,7 @@ function MiniHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
       {containerWidth > 0 && (
         <View style={[s.heatmapGrid, { width: gridWidth, height: gridHeight }]}>
           {cells.map((cell, i) => (
-            <View
+            <TouchableOpacity
               key={i}
               style={{
                 position: "absolute",
@@ -147,10 +190,40 @@ function MiniHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
                 borderRadius: Math.max(2, CELL * 0.25),
                 backgroundColor: getColor(cell.intensity),
               }}
+              onPress={() => handleCellPress(cell, cell.col, cell.row)}
+              activeOpacity={0.7}
             />
           ))}
         </View>
       )}
+      
+      {/* Selected cell tooltip */}
+      {selectedCell && tooltipStyle && (
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            ...tooltipStyle,
+            backgroundColor: themeColors.card,
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+            borderRadius: 4,
+            borderWidth: 0.5,
+            borderColor: themeColors.border,
+            minWidth: 80,
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.15,
+            shadowRadius: 2,
+            elevation: 3,
+          }}
+        >
+          <Text style={{ fontSize: 10, color: themeColors.cardForeground, fontWeight: "500", textAlign: "center" }}>
+            {formatDisplayDate(selectedCell.date)} {selectedCell.time > 0 ? formatTime(selectedCell.time) : "无阅读"}
+          </Text>
+        </View>
+      )}
+      
       <View style={s.heatmapLegend}>
         <Text style={s.heatmapLegendText}>少</Text>
         {[0, 0.25, 0.5, 0.75, 1].map((v) => (

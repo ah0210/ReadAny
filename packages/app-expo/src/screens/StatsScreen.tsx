@@ -37,6 +37,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Svg, { Defs, G, Line, LinearGradient, Path, Rect, Stop, Text as SvgText } from "react-native-svg";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 
@@ -101,10 +102,14 @@ function StatCard({
 
 function FullHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
   const colors = useColors();
+  const [selectedDay, setSelectedDay] = useState<{ date: string; time: number; weekIdx: number; dayIdx: number } | null>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
   const CELL = 10;
   const GAP = 2;
   const UNIT = CELL + GAP;
   const WEEKS = 26;
+  const TOOLTIP_WIDTH = 80;
+  const TOOLTIP_HEIGHT = 24;
 
   const { weeks, monthLabels } = useMemo(() => {
     const statsMap = new Map<string, number>();
@@ -155,8 +160,49 @@ function FullHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
     return withOpacity(colors.emerald, 0.9);
   };
 
+  const formatDisplayDate = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+  };
+
+  const handleCellPress = (day: { date: string; time: number }, weekIdx: number, dayIdx: number) => {
+    if (selectedDay?.date === day.date) {
+      setSelectedDay(null);
+    } else {
+      setSelectedDay({ ...day, weekIdx, dayIdx });
+      setTimeout(() => setSelectedDay(null), 1000);
+    }
+  };
+
+  // Calculate tooltip position with boundary detection
+  const getTooltipStyle = () => {
+    if (!selectedDay || containerWidth === 0) return null;
+    const { weekIdx, dayIdx } = selectedDay;
+    
+    const firstWeekPadding = weeks[0]?.[0]?.dayOfWeek || 0;
+    const paddingOffset = weekIdx === 0 ? firstWeekPadding * UNIT : 0;
+    
+    const cellX = weekIdx * UNIT + CELL / 2;
+    const cellY = paddingOffset + dayIdx * UNIT + CELL / 2;
+    
+    let left = cellX - TOOLTIP_WIDTH / 2;
+    let top = cellY - TOOLTIP_HEIGHT - 8;
+    
+    // Boundary detection
+    if (left < 4) left = 4;
+    if (left + TOOLTIP_WIDTH > containerWidth - 4) left = containerWidth - TOOLTIP_WIDTH - 4;
+    if (top < 4) top = cellY + CELL + 4; // Show below if no space above
+    
+    return { left, top };
+  };
+
+  const tooltipStyle = getTooltipStyle();
+
   return (
-    <View>
+    <View 
+      style={{ position: "relative" }}
+      onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
+    >
       {/* Month labels */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         <View style={{ flexDirection: "row", height: 14, marginBottom: 2 }}>
@@ -188,8 +234,8 @@ function FullHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
                 Array.from({ length: week[0].dayOfWeek }).map((_, i) => (
                   <View key={`pad-${i}`} style={{ width: CELL, height: CELL }} />
                 ))}
-              {week.map((day) => (
-                <View
+              {week.map((day, di) => (
+                <TouchableOpacity
                   key={day.date}
                   style={{
                     width: CELL,
@@ -197,12 +243,41 @@ function FullHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
                     borderRadius: 2,
                     backgroundColor: getColor(day.time),
                   }}
+                  onPress={() => handleCellPress(day, wi, di)}
+                  activeOpacity={0.7}
                 />
               ))}
             </View>
           ))}
         </View>
       </ScrollView>
+
+      {/* Selected day tooltip - positioned outside ScrollView for boundary detection */}
+      {selectedDay && tooltipStyle && (
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            ...tooltipStyle,
+            backgroundColor: colors.card,
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+            borderRadius: 4,
+            borderWidth: 0.5,
+            borderColor: colors.border,
+            minWidth: TOOLTIP_WIDTH,
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.15,
+            shadowRadius: 2,
+            elevation: 3,
+          }}
+        >
+          <Text style={{ fontSize: 10, color: colors.cardForeground, fontWeight: "500", textAlign: "center" }}>
+            {formatDisplayDate(selectedDay.date)} {selectedDay.time > 0 ? formatTime(selectedDay.time) : "无阅读"}
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -218,8 +293,15 @@ function BarChart({
 }) {
   const colors = useColors();
   const s = makeStyles(colors);
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const maxVal = Math.max(1, ...data.map((d) => d.value));
   const BAR_HEIGHT = 140;
+  const Y_AXIS_WIDTH = 32;
+
+  const yTicks = [0, maxVal * 0.5, maxVal].map((v) => ({
+    value: v,
+    label: v < 60 ? `${Math.round(v)}m` : `${(v / 60).toFixed(1)}h`,
+  }));
 
   if (data.length === 0) {
     return (
@@ -230,14 +312,28 @@ function BarChart({
   }
 
   return (
-    <View style={s.barChartWrap}>
+    <TouchableOpacity activeOpacity={1} onPress={() => setSelectedIdx(null)} style={[s.barChartWrap, { flexDirection: "row" }]}>
+      {/* Y axis */}
+      <View style={{ width: Y_AXIS_WIDTH, height: BAR_HEIGHT + 20, justifyContent: "space-between", paddingRight: 4 }}>
+        {yTicks.map((tick, i) => (
+          <Text key={i} style={{ fontSize: 8, color: colors.mutedForeground, textAlign: "right" }}>
+            {tick.label}
+          </Text>
+        ))}
+      </View>
+
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={s.barChartContent}
       >
         {data.map((item, idx) => (
-          <View key={`${item.label}-${idx}`} style={s.barCol}>
+          <TouchableOpacity
+            key={`${item.label}-${idx}`}
+            style={s.barCol}
+            onPress={() => setSelectedIdx(selectedIdx === idx ? null : idx)}
+            activeOpacity={0.7}
+          >
             <View style={[s.barTrack, { height: BAR_HEIGHT }]}>
               <View
                 style={[
@@ -250,10 +346,38 @@ function BarChart({
               />
             </View>
             <Text style={s.barLabel}>{item.label}</Text>
-          </View>
+          </TouchableOpacity>
         ))}
       </ScrollView>
-    </View>
+
+      {/* Tooltip overlay - positioned outside the bar */}
+      {selectedIdx !== null && data[selectedIdx] && data[selectedIdx].value > 0 && (
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            left: Y_AXIS_WIDTH + 8 + selectedIdx * 28 + 14,
+            top: BAR_HEIGHT - (data[selectedIdx].value / maxVal) * BAR_HEIGHT - 24,
+            backgroundColor: colors.card,
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+            borderRadius: 4,
+            borderWidth: 0.5,
+            borderColor: colors.border,
+            minWidth: 50,
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.15,
+            shadowRadius: 2,
+            elevation: 3,
+          }}
+        >
+          <Text style={{ fontSize: 10, color: colors.cardForeground, fontWeight: "500", textAlign: "center" }}>
+            {formatTime(data[selectedIdx].value)}
+          </Text>
+        </View>
+      )}
+    </TouchableOpacity>
   );
 }
 
@@ -263,8 +387,13 @@ function TrendChart({ data }: { data: TrendPoint[] }) {
   const { t } = useTranslation();
   const colors = useColors();
   const s = makeStyles(colors);
-  const maxVal = Math.max(1, ...data.map((d) => d.dailyTime));
-  const BAR_HEIGHT = 100;
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  const CHART_HEIGHT = 120;
+  const MARGIN_LEFT = 36;
+  const MARGIN_BOTTOM = 24;
+  const MARGIN_TOP = 8;
 
   if (data.length === 0) {
     return (
@@ -274,35 +403,167 @@ function TrendChart({ data }: { data: TrendPoint[] }) {
     );
   }
 
-  // Show every 5th label
-  const showLabel = (idx: number) => idx === 0 || idx === data.length - 1 || idx % 5 === 0;
+  const maxVal = Math.max(1, ...data.map((d) => d.dailyTime));
+  const innerWidth = containerWidth > 0 ? containerWidth - MARGIN_LEFT - 8 : 0;
+  const innerHeight = CHART_HEIGHT - MARGIN_TOP - MARGIN_BOTTOM;
+
+  const xScale = (idx: number) => {
+    if (data.length <= 1) return MARGIN_LEFT + innerWidth / 2;
+    return MARGIN_LEFT + (idx / (data.length - 1)) * innerWidth;
+  };
+
+  const yScale = (val: number) => {
+    return MARGIN_TOP + innerHeight - (val / maxVal) * innerHeight;
+  };
+
+  const yTicks = [0, maxVal * 0.5, maxVal].map((v) => ({
+    value: v,
+    y: yScale(v),
+  }));
+
+  const linePath = data
+    .map((d, i) => {
+      const x = xScale(i);
+      const y = yScale(d.dailyTime);
+      return i === 0 ? `M ${x} ${y}` : `L ${x} ${y}`;
+    })
+    .join(" ");
+
+  const areaPath =
+    `M ${MARGIN_LEFT} ${MARGIN_TOP + innerHeight} ` +
+    linePath.replace("M", "L") +
+    ` L ${xScale(data.length - 1)} ${MARGIN_TOP + innerHeight} Z`;
+
+  const xTickInterval = Math.max(1, Math.ceil(data.length / 6));
+  const xTicks = data.filter((_, i) => i === 0 || i === data.length - 1 || i % xTickInterval === 0);
 
   return (
-    <View style={s.barChartWrap}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={s.trendContent}
-      >
-        {data.map((item, idx) => (
-          <View key={item.date} style={s.trendCol}>
-            <View style={[s.trendTrack, { height: BAR_HEIGHT }]}>
-              <View
-                style={[
-                  s.trendBar,
-                  {
-                    height: Math.max(1, (item.dailyTime / maxVal) * BAR_HEIGHT),
-                    backgroundColor:
-                      item.dailyTime > 0 ? withOpacity(colors.emerald, 0.5) : "transparent",
-                  },
-                ]}
+    <TouchableOpacity
+      activeOpacity={1}
+      onPress={() => setSelectedIdx(null)}
+      style={{ height: CHART_HEIGHT + 40 }}
+      onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
+    >
+      {containerWidth > 0 && (
+        <>
+          <Svg width={containerWidth} height={CHART_HEIGHT + 40}>
+            <Defs>
+              <LinearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={colors.emerald} stopOpacity={0.3} />
+                <Stop offset="1" stopColor={colors.emerald} stopOpacity={0.02} />
+              </LinearGradient>
+            </Defs>
+
+            <G>
+              {yTicks.map((tick) => (
+                <G key={tick.value}>
+                  <Line
+                    x1={MARGIN_LEFT}
+                    y1={tick.y}
+                    x2={containerWidth - 8}
+                    y2={tick.y}
+                    stroke={colors.border}
+                    strokeWidth={1}
+                  />
+                  <SvgText
+                    x={MARGIN_LEFT - 4}
+                    y={tick.y}
+                    fontSize={9}
+                    fill={colors.mutedForeground}
+                    textAnchor="end"
+                    alignmentBaseline="middle"
+                  >
+                    {tick.value < 60 ? `${Math.round(tick.value)}m` : `${(tick.value / 60).toFixed(1)}h`}
+                  </SvgText>
+                </G>
+              ))}
+
+              <Path d={areaPath} fill="url(#trendGradient)" />
+              <Path d={linePath} fill="none" stroke={colors.emerald} strokeWidth={2} />
+
+              <Line
+                x1={MARGIN_LEFT}
+                y1={MARGIN_TOP + innerHeight}
+                x2={containerWidth - 8}
+                y2={MARGIN_TOP + innerHeight}
+                stroke={colors.border}
+                strokeWidth={1}
               />
-            </View>
-            {showLabel(idx) && <Text style={s.trendLabel}>{formatDate(item.date)}</Text>}
+
+              {xTicks.map((d) => {
+                const idx = data.findIndex((dd) => dd.date === d.date);
+                return (
+                  <SvgText
+                    key={d.date}
+                    x={xScale(idx)}
+                    y={CHART_HEIGHT + 14}
+                    fontSize={9}
+                    fill={colors.mutedForeground}
+                    textAnchor="middle"
+                  >
+                    {formatDate(d.date)}
+                  </SvgText>
+                );
+              })}
+
+              {data.map((d, i) => (
+                <Rect
+                  key={d.date}
+                  x={xScale(i) - 12}
+                  y={0}
+                  width={24}
+                  height={CHART_HEIGHT}
+                  fill="transparent"
+                />
+              ))}
+            </G>
+          </Svg>
+
+          <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}>
+            {data.map((d, i) => (
+              <TouchableOpacity
+                key={d.date}
+                style={{
+                  position: "absolute",
+                  left: xScale(i) - 12,
+                  top: 0,
+                  width: 24,
+                  height: CHART_HEIGHT,
+                }}
+                onPress={() => setSelectedIdx(selectedIdx === i ? null : i)}
+                activeOpacity={0.7}
+              />
+            ))}
           </View>
-        ))}
-      </ScrollView>
-    </View>
+
+          {selectedIdx !== null && data[selectedIdx] && (
+            <View
+              style={{
+                position: "absolute",
+                left: Math.min(Math.max(xScale(selectedIdx) - 40, 4), containerWidth - 84),
+                top: Math.max(yScale(data[selectedIdx].dailyTime) - 36, 4),
+                backgroundColor: colors.card,
+                borderRadius: 6,
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderWidth: 0.5,
+                borderColor: colors.border,
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.15,
+                shadowRadius: 2,
+                elevation: 3,
+              }}
+              pointerEvents="none"
+            >
+              <Text style={{ fontSize: 10, color: colors.cardForeground, fontWeight: "500" }}>
+                {formatDate(data[selectedIdx].date)} {formatTime(data[selectedIdx].dailyTime)}
+              </Text>
+            </View>
+          )}
+        </>
+      )}
+    </TouchableOpacity>
   );
 }
 
@@ -843,6 +1104,16 @@ const makeStyles = (colors: ThemeColors) =>
     barLabel: { fontSize: 8, color: colors.mutedForeground, marginTop: 4 },
     barChartEmpty: { height: 120, alignItems: "center", justifyContent: "center" },
     barChartEmptyText: { fontSize: fontSize.xs, color: colors.mutedForeground },
+    tooltip: {
+      position: "absolute",
+      backgroundColor: colors.card,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+      borderWidth: 0.5,
+      borderColor: colors.border,
+    },
+    tooltipText: { fontSize: 9, color: colors.cardForeground, fontWeight: "500" },
 
     // Trend chart
     trendContent: { alignItems: "flex-end", gap: 1 },

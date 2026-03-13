@@ -120,7 +120,7 @@ export function BarChart({ data, height = 200, emptyMessage }: BarChartProps) {
             const isHovered = hoveredIndex === i;
             return (
               <g
-                key={d.label}
+                key={`bar-${i}`}
                 onMouseEnter={() => setHoveredIndex(i)}
                 onMouseLeave={() => setHoveredIndex(null)}
               >
@@ -172,9 +172,9 @@ export function BarChart({ data, height = 200, emptyMessage }: BarChartProps) {
           })}
 
           {/* X axis labels */}
-          {data.map((d) => (
+          {data.map((d, i) => (
             <text
-              key={`label-${d.label}`}
+              key={`label-${i}`}
               x={(xScale(d.label) || 0) + xScale.bandwidth() / 2}
               y={innerHeight + 18}
               textAnchor="middle"

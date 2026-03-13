@@ -239,38 +239,33 @@ export function ReadingStatsPanel() {
         <div className="mb-4 flex items-center justify-between">
           <div className="space-y-1">
             <h3 className="text-base font-semibold text-foreground">{t("stats.heatmapTitle")}</h3>
-            {chartView === "heatmap" && (
-              <p className="text-xs text-muted-foreground">{t("stats.heatmapDesc")}</p>
-            )}
+            <p className="text-xs text-muted-foreground">
+              {chartView === "heatmap" ? t("stats.heatmapDesc") : t("stats.barChartDesc", "查看指定时间段的阅读统计")}
+            </p>
           </div>
           <div className="flex items-center gap-2">
-            {/* Heatmap / Bar toggle */}
-            <div className="flex rounded-lg border border-border bg-muted p-0.5">
-              <button
-                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                  chartView === "heatmap"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-                onClick={() => setChartView("heatmap")}
-              >
-                {t("stats.viewHeatmap")}
-              </button>
-              <button
-                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                  chartView === "bar"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-                onClick={() => setChartView("bar")}
-              >
-                {t("stats.viewBarChart")}
-              </button>
-            </div>
-
             {/* Week/Month toggle + date navigation (only for bar view) */}
             {chartView === "bar" && (
               <>
+                <div className="flex items-center gap-1">
+                  <button
+                    className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    onClick={() => navigatePeriod(-1)}
+                    title={t("stats.prevPeriod")}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <span className="min-w-[120px] text-center text-xs font-medium text-muted-foreground">
+                    {periodLabel}
+                  </span>
+                  <button
+                    className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    onClick={() => navigatePeriod(1)}
+                    title={t("stats.nextPeriod")}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
                 <div className="flex rounded-lg border border-border bg-muted p-0.5">
                   <button
                     className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
@@ -293,27 +288,32 @@ export function ReadingStatsPanel() {
                     {t("stats.periodMonth")}
                   </button>
                 </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                    onClick={() => navigatePeriod(-1)}
-                    title={t("stats.prevPeriod")}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </button>
-                  <span className="min-w-[120px] text-center text-xs font-medium text-muted-foreground">
-                    {periodLabel}
-                  </span>
-                  <button
-                    className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                    onClick={() => navigatePeriod(1)}
-                    title={t("stats.nextPeriod")}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                </div>
               </>
             )}
+
+            {/* Heatmap / Bar toggle - fixed position */}
+            <div className="flex rounded-lg border border-border bg-muted p-0.5">
+              <button
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  chartView === "heatmap"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => setChartView("heatmap")}
+              >
+                {t("stats.viewHeatmap")}
+              </button>
+              <button
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  chartView === "bar"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => setChartView("bar")}
+              >
+                {t("stats.viewBarChart")}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -324,7 +324,11 @@ export function ReadingStatsPanel() {
             <HeatmapLegend />
           </>
         ) : (
-          <BarChart data={barChartData} height={200} emptyMessage={t("stats.noData")} />
+          <div className="flex justify-center">
+            <div style={{ maxWidth: "1200px", width: "100%" }}>
+              <BarChart data={barChartData} height={200} emptyMessage={t("stats.noData")} />
+            </div>
+          </div>
         )}
       </div>
 
@@ -377,7 +381,7 @@ function HeatmapChart({ dailyStats, lang }: { dailyStats: DailyStats[]; lang: st
     if (!el) return;
     const availableWidth = el.clientWidth - labelWidth;
     const computed = Math.floor((availableWidth + gap) / 53 - gap);
-    setCellSize(Math.max(6, Math.min(computed, 16)));
+    setCellSize(Math.max(8, Math.min(computed, 16)));
   }, []);
 
   useEffect(() => {
@@ -450,33 +454,34 @@ function HeatmapChart({ dailyStats, lang }: { dailyStats: DailyStats[]; lang: st
 
   return (
     <TooltipProvider delayDuration={100}>
-      <div ref={containerRef} className="w-full">
-        {/* Month labels */}
-        <div className="flex" style={{ paddingLeft: `${labelWidth}px` }}>
-          {monthLabels.map((m, i) => {
-            const nextCol = i + 1 < monthLabels.length ? monthLabels[i + 1].col : weeks.length;
-            const span = nextCol - m.col;
-            return (
-              <div
-                key={`${m.label}-${m.col}`}
-                className="text-xs text-muted-foreground"
-                style={{ width: `${span * unit}px`, minWidth: `${span * unit}px` }}
-              >
-                {span >= 2 ? m.label : ""}
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="flex gap-0">
-          {/* Day of week labels */}
-          <div className="flex flex-col justify-between pr-1.5" style={{ width: `${labelWidth}px`, height: `${7 * unit - gap}px` }}>
-            {[0, 1, 2, 3, 4, 5, 6].map((d) => {
-              const label = dayLabels.find((l) => l.idx === d);
+      <div ref={containerRef} className="w-full flex justify-center">
+        <div style={{ maxWidth: "1200px", width: "100%" }}>
+          {/* Month labels */}
+          <div className="flex" style={{ paddingLeft: `${labelWidth}px` }}>
+            {monthLabels.map((m, i) => {
+              const nextCol = i + 1 < monthLabels.length ? monthLabels[i + 1].col : weeks.length;
+              const span = nextCol - m.col;
               return (
-                <div key={d} className="flex items-center" style={{ height: `${cellSize}px` }}>
-                  <span className="text-[10px] text-muted-foreground">{label?.label || ""}</span>
+                <div
+                  key={`${m.label}-${m.col}`}
+                  className="text-xs text-muted-foreground"
+                  style={{ width: `${span * unit}px`, minWidth: `${span * unit}px` }}
+                >
+                  {span >= 2 ? m.label : ""}
                 </div>
+              );
+            })}
+          </div>
+
+          <div className="flex gap-0">
+            {/* Day of week labels */}
+            <div className="flex flex-col justify-between pr-1.5" style={{ width: `${labelWidth}px`, height: `${7 * unit - gap}px` }}>
+              {[0, 1, 2, 3, 4, 5, 6].map((d) => {
+                const label = dayLabels.find((l) => l.idx === d);
+                return (
+                  <div key={d} className="flex items-center" style={{ height: `${cellSize}px` }}>
+                    <span className="text-[10px] text-muted-foreground">{label?.label || ""}</span>
+                  </div>
               );
             })}
           </div>
@@ -510,6 +515,7 @@ function HeatmapChart({ dailyStats, lang }: { dailyStats: DailyStats[]; lang: st
             ))}
           </div>
         </div>
+        </div>
       </div>
     </TooltipProvider>
   );
@@ -521,10 +527,10 @@ function HeatmapLegend() {
     <div className="mt-3 flex items-center justify-end gap-1.5 text-xs text-muted-foreground">
       <span>{t("stats.less")}</span>
       <div className="h-[12px] w-[12px] rounded-[2px] bg-muted" />
-      <div className="h-[12px] w-[12px] rounded-[2px] bg-emerald-200 dark:bg-emerald-900" />
-      <div className="h-[12px] w-[12px] rounded-[2px] bg-emerald-400 dark:bg-emerald-700" />
-      <div className="h-[12px] w-[12px] rounded-[2px] bg-emerald-500 dark:bg-emerald-600" />
-      <div className="h-[12px] w-[12px] rounded-[2px] bg-emerald-700 dark:bg-emerald-500" />
+      <div className="h-[12px] w-[12px] rounded-[2px] bg-emerald-500/30 dark:bg-emerald-500/30" />
+      <div className="h-[12px] w-[12px] rounded-[2px] bg-emerald-500/50 dark:bg-emerald-500/50" />
+      <div className="h-[12px] w-[12px] rounded-[2px] bg-emerald-500/70 dark:bg-emerald-500/70" />
+      <div className="h-[12px] w-[12px] rounded-[2px] bg-emerald-500/90 dark:bg-emerald-500/90" />
       <span>{t("stats.more")}</span>
     </div>
   );
@@ -532,10 +538,10 @@ function HeatmapLegend() {
 
 function getHeatColor(minutes: number): string {
   if (minutes <= 0) return "bg-muted";
-  if (minutes < 15) return "bg-emerald-200 dark:bg-emerald-900";
-  if (minutes < 30) return "bg-emerald-400 dark:bg-emerald-700";
-  if (minutes < 60) return "bg-emerald-500 dark:bg-emerald-600";
-  return "bg-emerald-700 dark:bg-emerald-500";
+  if (minutes < 15) return "bg-emerald-500/30 dark:bg-emerald-500/30";
+  if (minutes < 30) return "bg-emerald-500/50 dark:bg-emerald-500/50";
+  if (minutes < 60) return "bg-emerald-500/70 dark:bg-emerald-500/70";
+  return "bg-emerald-500/90 dark:bg-emerald-500/90";
 }
 
 /* ── Stat Card ── */
