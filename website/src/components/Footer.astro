@@ -4,6 +4,9 @@ interface Props {
 }
 
 const { t } = Astro.props
+const currentYear = new Date().getFullYear()
+const locale = Astro.url.pathname.includes('/zh/') ? 'zh' : 'en'
+const licenseText = locale === 'zh' ? 'GPL-3.0 许可证。' : 'GPL-3.0 License.'
 ---
 
 <footer class="border-t border-border/50 py-8">
@@ -13,9 +16,9 @@ const { t } = Astro.props
         <img src="/ReadAny/logo.svg" alt="ReadAny" class="h-5 w-5" />
         <span class="text-sm font-medium">ReadAny</span>
       </div>
-      
+
       <p class="text-sm text-muted-foreground">
-        {t('footer.copyright')}
+        © {currentYear} ReadAny. {licenseText}
       </p>
     </div>
   </div>
