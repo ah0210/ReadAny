@@ -37,8 +37,7 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
         duration: 300,
         maxWidth: 300,
         paddingX: 16,
-        zoom: false, // Disable built-in zoom to use custom controls
-        pan: false,  // Disable built-in pan
+
         style: (id: string) => `
           .${id} {
             --markmap-text-color: #333;
@@ -79,8 +78,6 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
         duration: 300,
         maxWidth: 400,
         paddingX: 24,
-        zoom: false, // Disable built-in zoom to use custom controls
-        pan: false,  // Disable built-in pan
         style: (id: string) => `
           .${id} {
             --markmap-text-color: #333;
@@ -409,7 +406,6 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
               <svg
                 ref={fullscreenSvgRef}
                 className="w-full h-full"
-                onDoubleClick={(e) => e.stopPropagation()}
               />
             </div>
           </div>
@@ -477,7 +473,6 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
           <svg
             ref={svgRef}
             className="w-full h-full"
-            onDoubleClick={(e) => e.stopPropagation()}
           />
         </div>
       </div>
