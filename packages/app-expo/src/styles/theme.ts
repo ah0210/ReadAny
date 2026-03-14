@@ -56,14 +56,14 @@ export const radius = {
 } as const;
 
 export const fontSize = {
-  xs: 10,
-  sm: 12,
-  base: 14,
-  md: 16,
-  lg: 18,
-  xl: 20,
-  "2xl": 24,
-  "3xl": 28,
+  xs: 12,
+  sm: 14,
+  base: 16,
+  md: 18,
+  lg: 20,
+  xl: 22,
+  "2xl": 26,
+  "3xl": 30,
 } as const;
 
 export const fontWeight = {

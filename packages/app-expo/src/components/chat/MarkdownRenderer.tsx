@@ -27,7 +27,7 @@ function CodeBlockWithCopy({ code, style, colors }: { code: string; style: any; 
           zIndex: 10,
         }}
       >
-        <Text style={{ fontSize: 10, color: colors.mutedForeground }}>复制</Text>
+        <Text style={{ fontSize: 12, color: colors.mutedForeground }}>复制</Text>
       </TouchableOpacity>
       <Text style={style}>{code}</Text>
     </View>

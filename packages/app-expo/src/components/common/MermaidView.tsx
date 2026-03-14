@@ -322,7 +322,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   title: {
-    fontSize: 11,
+    fontSize: 13,
     flex: 1,
   },
   controls: {
@@ -354,6 +354,6 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   hint: {
-    fontSize: 11,
+    fontSize: 13,
   },
 });

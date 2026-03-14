@@ -836,7 +836,7 @@ const makeStyles = (colors: ThemeColors) =>
       fontWeight: fontWeight.medium,
       color: colors.primary,
     },
-    vecBannerTitle: { fontSize: 10, color: colors.mutedForeground, marginTop: 2 },
+    vecBannerTitle: { fontSize: 12, color: colors.mutedForeground, marginTop: 2 },
     vecProgressBg: {
       height: 4,
       backgroundColor: colors.muted + "1A",

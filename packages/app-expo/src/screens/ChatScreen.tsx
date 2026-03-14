@@ -522,7 +522,7 @@ const makeStyles = (colors: ThemeColors) =>
       color: colors.mutedForeground,
     },
     sectionLabel: {
-      fontSize: 10,
+      fontSize: 12,
       fontWeight: fw.medium,
       color: colors.mutedForeground,
       paddingHorizontal: 10,
@@ -558,12 +558,12 @@ const makeStyles = (colors: ThemeColors) =>
       color: colors.primary,
     },
     threadTime: {
-      fontSize: 9,
+      fontSize: 11,
       color: colors.mutedForeground,
       opacity: 0.5,
     },
     threadPreview: {
-      fontSize: 11,
+      fontSize: 13,
       color: colors.mutedForeground,
     },
     threadDeleteBtn: {

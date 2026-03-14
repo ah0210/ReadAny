@@ -275,6 +275,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
   },
   hint: {
-    fontSize: 11,
+    fontSize: 13,
   },
 });

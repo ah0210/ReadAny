@@ -474,7 +474,7 @@ const makeStyles = (colors: ThemeColors) =>
     },
     fallbackAuthor: {
       textAlign: "center",
-      fontSize: 10,
+      fontSize: 12,
       fontFamily: "serif",
       color: colors.stone400,
     },
@@ -505,7 +505,7 @@ const makeStyles = (colors: ThemeColors) =>
     },
     vecOverlayText: {
       marginTop: 6,
-      fontSize: 12,
+      fontSize: 14,
       fontWeight: fontWeight.medium,
       color: "#fff",
     },
@@ -524,7 +524,7 @@ const makeStyles = (colors: ThemeColors) =>
     vecBadgeText: { fontSize: 7, fontWeight: fontWeight.medium, color: "#fff" },
     infoWrap: { paddingTop: 6, paddingHorizontal: 1 },
     bookTitle: {
-      fontSize: 11,
+      fontSize: 13,
       fontWeight: fontWeight.semibold,
       color: colors.foreground,
       lineHeight: 14,

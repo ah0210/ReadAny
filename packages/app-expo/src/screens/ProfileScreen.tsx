@@ -220,7 +220,7 @@ function MiniHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
             elevation: 3,
           }}
         >
-          <Text style={{ fontSize: 10, color: themeColors.cardForeground, fontWeight: "500", textAlign: "center" }}>
+          <Text style={{ fontSize: 12, color: themeColors.cardForeground, fontWeight: "500", textAlign: "center" }}>
             {formatDisplayDate(selectedCell.date)} {selectedCell.time > 0 ? formatTime(selectedCell.time) : "无阅读"}
           </Text>
         </View>

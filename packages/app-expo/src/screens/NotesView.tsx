@@ -872,7 +872,7 @@ const makeStyles = (colors: ThemeColors) =>
       paddingVertical: 6,
     },
     statValue: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.foreground },
-    statLabel: { fontSize: 10, color: colors.mutedForeground },
+    statLabel: { fontSize: 12, color: colors.mutedForeground },
     searchBar: {
       flexDirection: "row",
       alignItems: "center",

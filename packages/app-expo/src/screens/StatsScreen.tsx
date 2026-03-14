@@ -273,7 +273,7 @@ function FullHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
             elevation: 3,
           }}
         >
-          <Text style={{ fontSize: 10, color: colors.cardForeground, fontWeight: "500", textAlign: "center" }}>
+          <Text style={{ fontSize: 12, color: colors.cardForeground, fontWeight: "500", textAlign: "center" }}>
             {formatDisplayDate(selectedDay.date)} {selectedDay.time > 0 ? formatTime(selectedDay.time) : "无阅读"}
           </Text>
         </View>
@@ -372,7 +372,7 @@ function BarChart({
             elevation: 3,
           }}
         >
-          <Text style={{ fontSize: 10, color: colors.cardForeground, fontWeight: "500", textAlign: "center" }}>
+          <Text style={{ fontSize: 12, color: colors.cardForeground, fontWeight: "500", textAlign: "center" }}>
             {formatTime(data[selectedIdx].value)}
           </Text>
         </View>
@@ -556,7 +556,7 @@ function TrendChart({ data }: { data: TrendPoint[] }) {
               }}
               pointerEvents="none"
             >
-              <Text style={{ fontSize: 10, color: colors.cardForeground, fontWeight: "500" }}>
+              <Text style={{ fontSize: 12, color: colors.cardForeground, fontWeight: "500" }}>
                 {formatDate(data[selectedIdx].date)} {formatTime(data[selectedIdx].dailyTime)}
               </Text>
             </View>
@@ -1064,7 +1064,7 @@ const makeStyles = (colors: ThemeColors) =>
     },
     toggleBtn: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.sm },
     toggleBtnActive: { backgroundColor: colors.background },
-    toggleBtnText: { fontSize: 10, fontWeight: fontWeight.medium, color: colors.mutedForeground },
+    toggleBtnText: { fontSize: 12, fontWeight: fontWeight.medium, color: colors.mutedForeground },
     toggleBtnTextActive: { color: colors.foreground },
 
     // Bar controls
@@ -1077,7 +1077,7 @@ const makeStyles = (colors: ThemeColors) =>
     periodNav: { flexDirection: "row", alignItems: "center", gap: 2 },
     periodNavBtn: { padding: 4, borderRadius: radius.sm },
     periodLabel: {
-      fontSize: 10,
+      fontSize: 12,
       fontWeight: fontWeight.medium,
       color: colors.mutedForeground,
       minWidth: 80,
@@ -1151,7 +1151,7 @@ const makeStyles = (colors: ThemeColors) =>
       borderRadius: radius.sm,
       backgroundColor: colors.muted,
     },
-    bookCoverLetter: { fontSize: 10, color: colors.mutedForeground },
+    bookCoverLetter: { fontSize: 12, color: colors.mutedForeground },
     bookInfo: { flex: 1, gap: 4 },
     bookTitleRow: {
       flexDirection: "row",
@@ -1166,10 +1166,10 @@ const makeStyles = (colors: ThemeColors) =>
       flex: 1,
     },
     bookAuthor: {
-      fontSize: 9,
+      fontSize: 11,
       color: colors.mutedForeground,
     },
-    bookTime: { fontSize: 10, color: colors.mutedForeground },
+    bookTime: { fontSize: 12, color: colors.mutedForeground },
     progressRow: { flexDirection: "row", alignItems: "center", gap: 6 },
     progressTrack: {
       flex: 1,
@@ -1179,7 +1179,7 @@ const makeStyles = (colors: ThemeColors) =>
       overflow: "hidden",
     },
     progressFill: { height: "100%", borderRadius: 2, backgroundColor: colors.emerald },
-    progressPercent: { fontSize: 9, color: colors.mutedForeground },
+    progressPercent: { fontSize: 11, color: colors.mutedForeground },
 
     // Streak
     streakCard: {
@@ -1206,5 +1206,5 @@ const makeStyles = (colors: ThemeColors) =>
       fontWeight: fontWeight.semibold,
       color: colors.foreground,
     },
-    streakDesc: { fontSize: 10, color: colors.mutedForeground },
+    streakDesc: { fontSize: 12, color: colors.mutedForeground },
   });
