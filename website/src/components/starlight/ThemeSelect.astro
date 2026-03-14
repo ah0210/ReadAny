@@ -1,17 +1,39 @@
 ---
+let locale: string | undefined;
+try {
+  locale = Astro.locals.starlightRoute?.locale;
+} catch {
+  // Fallback: detect locale from URL path
+  const pathname = Astro.url.pathname;
+  if (pathname.includes('/zh/') || pathname.startsWith('/ReadAny/zh/')) {
+    locale = 'zh';
+  } else {
+    locale = undefined;
+  }
+}
+
+const themeLabels = {
+  light: locale === 'zh' ? '浅色' : 'Light',
+  dark: locale === 'zh' ? '深色' : 'Dark',
+  sepia: locale === 'zh' ? '护眼' : 'Sepia',
+};
+
 const themes = [
-  { value: 'light', label: 'Light', icon: 'sun' },
-  { value: 'dark', label: 'Dark', icon: 'moon' },
-  { value: 'sepia', label: 'Sepia', icon: 'book-open' },
+  { value: 'light', label: themeLabels.light, icon: 'sun' },
+  { value: 'dark', label: themeLabels.dark, icon: 'moon' },
+  { value: 'sepia', label: themeLabels.sepia, icon: 'book-open' },
 ];
+
+const ariaLabel = locale === 'zh' ? '切换主题' : 'Toggle theme';
+const title = locale === 'zh' ? '更改主题' : 'Change theme';
 ---
 
 <div class="theme-select-container">
   <button
     id="theme-toggle-btn"
     class="theme-toggle-trigger"
-    aria-label="Toggle theme"
-    title="Change theme"
+    aria-label={ariaLabel}
+    title={title}
   >
     <div class="icon-stack">
       <svg class="sun-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

@@ -355,6 +355,11 @@ article {
   display: none;
 }
 
+/* Hide anchor link icons */
+.sl-anchor-link {
+  display: none !important;
+}
+
 .sl-markdown-content p {
   margin: 1rem 0;
   color: var(--sl-color-text);

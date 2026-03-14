@@ -35,6 +35,7 @@ export default defineConfig({
         LanguageSelect: './src/components/starlight/LanguageSelect.astro',
         MobileTableOfContents: './src/components/starlight/MobileTableOfContents.astro',
         MobileMenuFooter: './src/components/starlight/MobileMenuFooter.astro',
+        MobileMenuToggle: './src/components/starlight/MobileMenuToggle.astro',
       },
       tableOfContents: {
         minHeadingLevel: 2,
