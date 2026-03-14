@@ -36,11 +36,27 @@ const MermaidBlock = memo(function MermaidBlock({ code }: { code: string }) {
   // Memoize SVG rendering - only re-render when code changes
   const svg = useMemo(() => {
     try {
-      return renderMermaidSVG(code, {
+      const rendered = renderMermaidSVG(code, {
         bg: "var(--background)",
         fg: "var(--foreground)",
         transparent: true,
       });
+      // Add style override to ensure all text is visible in all themes
+      return rendered?.replace(
+        /<svg/,
+        `<svg style="color: var(--foreground)"><style>
+          text, .label, .nodeLabel, .edgeLabel, .cluster-label, .labelText, .titleText {
+            fill: var(--foreground) !important;
+            color: var(--foreground) !important;
+          }
+          .edgePath .path {
+            stroke: var(--foreground) !important;
+          }
+          .arrowheadPath {
+            fill: var(--foreground) !important;
+          }
+        </style>`
+      );
     } catch (err) {
       return null;
     }
