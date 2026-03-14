@@ -85,7 +85,8 @@ function ReasoningPartView({ part }: { part: ReasoningPart }) {
     textPreview: part.text?.slice(0, 50),
     throttledTextLength: throttledText?.length,
     throttledTextPreview: throttledText?.slice(0, 50),
-    status: part.status 
+    status: part.status,
+    isOpen
   });
 
   // Use original part.text for empty check, throttledText for display
@@ -294,10 +295,9 @@ const makeReasoningStyles = (colors: ThemeColors) =>
       backgroundColor: withOpacity(colors.card, 0.5),
       paddingHorizontal: 10,
       paddingVertical: 8,
-      maxHeight: 200,
     },
     bodyScroll: {
-      flex: 1,
+      maxHeight: 200,
     },
     bodyText: {
       fontSize: fs.sm,
