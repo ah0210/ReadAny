@@ -20,7 +20,6 @@ interface PartProps {
 }
 
 export function PartRenderer({ part }: PartProps) {
-  console.log("[PartRenderer] rendering part:", { id: part.id, type: part.type });
   switch (part.type) {
     case "text":
       return <TextPartView part={part} />;
@@ -76,18 +75,6 @@ function ReasoningPartView({ part }: { part: ReasoningPart }) {
   useEffect(() => {
     if (part.status === "running") setIsOpen(true);
   }, [part.status]);
-
-  // Debug: log part info
-  console.log("[ReasoningPartView] part:", { 
-    id: part.id, 
-    type: part.type, 
-    textLength: part.text?.length, 
-    textPreview: part.text?.slice(0, 50),
-    throttledTextLength: throttledText?.length,
-    throttledTextPreview: throttledText?.slice(0, 50),
-    status: part.status,
-    isOpen
-  });
 
   // Use original part.text for empty check, throttledText for display
   if (!part.text?.trim()) return null;
