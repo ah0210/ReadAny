@@ -5,15 +5,21 @@
  * - Mermaid diagrams via beautiful-mermaid (synchronous SVG rendering)
  */
 import { renderMermaidSVG } from "beautiful-mermaid";
-import { Check, Copy, ArrowUpRight } from "lucide-react";
-import React, { useMemo, useState } from "react";
+import { Check, Copy, ArrowUpRight, Download, Maximize2, Minimize2, ZoomIn, ZoomOut } from "lucide-react";
+import React, { useMemo, useState, useRef } from "react";
 import Markdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import type { CitationPart } from "@readany/core/types/message";
+import { useTranslation } from "react-i18next";
 
 /** Mermaid code block — renders synchronously, zero-flash */
 function MermaidBlock({ code }: { code: string }) {
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  const [scale, setScale] = useState(1);
+  const svgRef = useRef<HTMLDivElement>(null);
+  
   const { svg, error } = useMemo(() => {
     try {
       return {
@@ -29,6 +35,31 @@ function MermaidBlock({ code }: { code: string }) {
     }
   }, [code]);
 
+  const handleDownload = () => {
+    const svgElement = svgRef.current?.querySelector("svg");
+    if (!svgElement) return;
+
+    const svgData = new XMLSerializer().serializeToString(svgElement);
+    const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+    const svgUrl = URL.createObjectURL(svgBlob);
+
+    const downloadLink = document.createElement("a");
+    downloadLink.href = svgUrl;
+    downloadLink.download = `diagram-${Date.now()}.svg`;
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+    URL.revokeObjectURL(svgUrl);
+  };
+
+  const handleZoomIn = () => {
+    setScale((prev) => Math.min(prev + 0.2, 3));
+  };
+
+  const handleZoomOut = () => {
+    setScale((prev) => Math.max(prev - 0.2, 0.3));
+  };
+
   if (error) {
     return (
       <pre className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-xs text-destructive">
@@ -37,11 +68,120 @@ function MermaidBlock({ code }: { code: string }) {
     );
   }
 
-  return (
+  const content = (
     <div
-      className="my-3 flex justify-center overflow-x-auto rounded-lg border bg-muted/30 p-4 [&_svg]:max-w-full"
-      dangerouslySetInnerHTML={{ __html: svg! }}
-    />
+      ref={svgRef}
+      className="my-3 flex justify-center overflow-auto rounded-lg border bg-muted/30 p-4"
+      style={{ maxHeight: 400 }}
+    >
+      <div
+        style={{
+          transform: `scale(${scale})`,
+          transformOrigin: "top left",
+          minWidth: scale < 1 ? "100%" : undefined,
+        }}
+        dangerouslySetInnerHTML={{ __html: svg! }}
+      />
+    </div>
+  );
+
+  if (expanded) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="relative max-h-[90vh] max-w-[90vw] overflow-auto rounded-lg border bg-background p-4 shadow-lg">
+          <div className="absolute right-2 top-2 flex gap-1">
+            <button
+              type="button"
+              onClick={handleZoomOut}
+              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              title={t("common.zoomOut", "缩小")}
+            >
+              <ZoomOut className="size-4" />
+            </button>
+            <span className="flex items-center text-xs text-muted-foreground min-w-[3rem] justify-center">
+              {Math.round(scale * 100)}%
+            </span>
+            <button
+              type="button"
+              onClick={handleZoomIn}
+              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              title={t("common.zoomIn", "放大")}
+            >
+              <ZoomIn className="size-4" />
+            </button>
+            <div className="w-px h-4 bg-border mx-1 self-center" />
+            <button
+              type="button"
+              onClick={handleDownload}
+              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              title={t("mindmap.download", "下载")}
+            >
+              <Download className="size-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setExpanded(false)}
+              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              title={t("common.collapse", "收起")}
+            >
+              <Minimize2 className="size-4" />
+            </button>
+          </div>
+          <div
+            ref={svgRef}
+            style={{
+              transform: `scale(${scale})`,
+              transformOrigin: "top left",
+            }}
+            dangerouslySetInnerHTML={{ __html: svg! }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="group relative">
+      {content}
+      <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <button
+          type="button"
+          onClick={handleZoomOut}
+          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          title={t("common.zoomOut", "缩小")}
+        >
+          <ZoomOut className="size-4" />
+        </button>
+        <span className="flex items-center text-xs text-muted-foreground min-w-[3rem] justify-center">
+          {Math.round(scale * 100)}%
+        </span>
+        <button
+          type="button"
+          onClick={handleZoomIn}
+          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          title={t("common.zoomIn", "放大")}
+        >
+          <ZoomIn className="size-4" />
+        </button>
+        <div className="w-px h-4 bg-border mx-1 self-center" />
+        <button
+          type="button"
+          onClick={handleDownload}
+          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          title={t("mindmap.download", "下载")}
+        >
+          <Download className="size-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          title={t("common.expand", "放大")}
+        >
+          <Maximize2 className="size-4" />
+        </button>
+      </div>
+    </div>
   );
 }
 

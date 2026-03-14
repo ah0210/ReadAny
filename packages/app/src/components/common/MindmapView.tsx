@@ -1,9 +1,8 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Transformer } from "markmap-lib";
 import { Markmap } from "markmap-view";
-import { Maximize2, Minimize2, Download } from "lucide-react";
-import { useState } from "react";
+import { Maximize2, Minimize2, Download, ZoomIn, ZoomOut } from "lucide-react";
 import { createPortal } from "react-dom";
 
 interface MindmapViewProps {
@@ -20,6 +19,7 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
   const markmapRef = useRef<Markmap | null>(null);
   const fullscreenMarkmapRef = useRef<Markmap | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [scale, setScale] = useState(1);
 
   const renderMap = useCallback(() => {
     if (!svgRef.current || !markdown) return;
@@ -99,6 +99,14 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
     URL.revokeObjectURL(svgUrl);
   }, [expanded, title, t]);
 
+  const handleZoomIn = useCallback(() => {
+    setScale((prev) => Math.min(prev + 0.2, 3));
+  }, []);
+
+  const handleZoomOut = useCallback(() => {
+    setScale((prev) => Math.max(prev - 0.2, 0.3));
+  }, []);
+
   const fullscreenOverlay = expanded
     ? createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center">
@@ -148,6 +156,26 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
           <div className="flex items-center gap-1">
             <button
               type="button"
+              onClick={handleZoomOut}
+              className="rounded p-1 hover:bg-muted transition-colors"
+              title={t("common.zoomOut", "缩小")}
+            >
+              <ZoomOut className="h-4 w-4 text-muted-foreground" />
+            </button>
+            <span className="text-xs text-muted-foreground min-w-[3rem] text-center">
+              {Math.round(scale * 100)}%
+            </span>
+            <button
+              type="button"
+              onClick={handleZoomIn}
+              className="rounded p-1 hover:bg-muted transition-colors"
+              title={t("common.zoomIn", "放大")}
+            >
+              <ZoomIn className="h-4 w-4 text-muted-foreground" />
+            </button>
+            <div className="w-px h-4 bg-border mx-1" />
+            <button
+              type="button"
               onClick={handleDownload}
               className="rounded p-1 hover:bg-muted transition-colors"
               title={t("mindmap.download")}
@@ -165,7 +193,17 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
           </div>
         </div>
 
-        <svg ref={svgRef} className="h-[400px] w-full" />
+        <div className="overflow-auto" style={{ height: 400 }}>
+          <svg
+            ref={svgRef}
+            style={{
+              width: `${scale * 100}%`,
+              height: `${scale * 100}%`,
+              minWidth: "100%",
+              minHeight: "100%",
+            }}
+          />
+        </div>
       </div>
 
       {fullscreenOverlay}
