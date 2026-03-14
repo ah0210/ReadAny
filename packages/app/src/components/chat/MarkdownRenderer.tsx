@@ -102,17 +102,30 @@ const MermaidBlock = memo(function MermaidBlock({ code }: { code: string }) {
       }
     });
     
-    // Add padding
-    const padding = 20;
-    const contentX = minX === Infinity ? 0 : minX - padding;
-    const contentY = minY === Infinity ? 0 : minY - padding;
-    const contentWidth = minX === Infinity ? 800 : maxX - minX + padding * 2;
-    const contentHeight = minY === Infinity ? 600 : maxY - minY + padding * 2;
+    // Fallback to original viewBox if no elements found
+    if (minX === Infinity) {
+      const originalViewBox = svgElement.getAttribute('viewBox')?.split(/\s+/).map(Number) || [0, 0, 800, 600];
+      minX = originalViewBox[0];
+      minY = originalViewBox[1];
+      maxX = originalViewBox[0] + originalViewBox[2];
+      maxY = originalViewBox[1] + originalViewBox[3];
+    }
     
-    // Set viewBox to include all content
+    // Tight padding - just enough to not cut off content
+    const padding = 10;
+    const contentX = minX - padding;
+    const contentY = minY - padding;
+    const contentWidth = maxX - minX + padding * 2;
+    const contentHeight = maxY - minY + padding * 2;
+    
+    // Set viewBox to tightly fit all content
     clonedSvg.setAttribute('viewBox', `${contentX} ${contentY} ${contentWidth} ${contentHeight}`);
     clonedSvg.setAttribute('width', String(contentWidth));
     clonedSvg.setAttribute('height', String(contentHeight));
+    
+    // Remove any existing width/height styles that might cause issues
+    clonedSvg.style.width = '';
+    clonedSvg.style.height = '';
     
     // Get computed styles and replace CSS variables with actual values
     const computedStyle = window.getComputedStyle(svgElement);

@@ -153,17 +153,51 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
       }
     });
     
-    // Add padding
-    const padding = 40;
-    const contentX = minX === Infinity ? 0 : minX - padding;
-    const contentY = minY === Infinity ? 0 : minY - padding;
-    const contentWidth = minX === Infinity ? 800 : maxX - minX + padding * 2;
-    const contentHeight = minY === Infinity ? 600 : maxY - minY + padding * 2;
+    // Fallback to g element transform if no bbox found (for markmap)
+    if (minX === Infinity) {
+      const gElement = clonedSvg.querySelector('g');
+      if (gElement) {
+        const transform = gElement.getAttribute('transform');
+        if (transform) {
+          const translateMatch = transform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+          const scaleMatch = transform.match(/scale\(([^)]+)\)/);
+          if (translateMatch && scaleMatch) {
+            const translateX = parseFloat(translateMatch[1]);
+            const translateY = parseFloat(translateMatch[2]);
+            const scale = parseFloat(scaleMatch[1]);
+            // Estimate bounds based on transform
+            minX = -translateX / scale;
+            minY = -translateY / scale;
+            maxX = minX + 1000;
+            maxY = minY + 800;
+          }
+        }
+      }
+    }
     
-    // Set viewBox to include all content
+    // Fallback to default if still no bounds
+    if (minX === Infinity) {
+      minX = 0;
+      minY = 0;
+      maxX = 800;
+      maxY = 600;
+    }
+    
+    // Tight padding - just enough to not cut off content
+    const padding = 15;
+    const contentX = minX - padding;
+    const contentY = minY - padding;
+    const contentWidth = maxX - minX + padding * 2;
+    const contentHeight = maxY - minY + padding * 2;
+    
+    // Set viewBox to tightly fit all content
     clonedSvg.setAttribute('viewBox', `${contentX} ${contentY} ${contentWidth} ${contentHeight}`);
     clonedSvg.setAttribute('width', String(contentWidth));
     clonedSvg.setAttribute('height', String(contentHeight));
+    
+    // Remove any existing width/height styles
+    clonedSvg.style.width = '';
+    clonedSvg.style.height = '';
     
     // Add white background
     const bgRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
