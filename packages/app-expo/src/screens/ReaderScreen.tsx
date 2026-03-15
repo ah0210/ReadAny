@@ -1651,6 +1651,8 @@ export function ReaderScreen({ route, navigation }: Props) {
       {showTTS && (
         <TTSControls
           onClose={() => {
+            ttsContinuousRef.current = false;
+            ttsSetOnEnd(null);
             ttsStop();
             setShowTTS(false);
           }}

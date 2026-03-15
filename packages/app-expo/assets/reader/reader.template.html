@@ -773,7 +773,7 @@
     }
 
     // Get all visible text for TTS (no length limit)
-    function getVisibleText() {
+    function doGetVisibleText() {
       try {
         if (!view || !view.renderer) {
           return { text: '', error: 'no view or renderer' };
@@ -941,7 +941,7 @@
       postToRN('bookmarkSnippet', { textSnippet: snippet || '' });
     };
     window.getVisibleText = function () {
-      var result = getVisibleText();
+      var result = doGetVisibleText();
       return JSON.stringify(result);
     };
 

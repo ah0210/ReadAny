@@ -103,8 +103,8 @@ export function TTSControls({ onClose, onReplay }: TTSControlsProps) {
 
   const [expanded, setExpanded] = useState(false);
 
-  const handleStop = useCallback(() => {
-    console.log("[TTSControls] handleStop called");
+  const handleClose = useCallback(() => {
+    console.log("[TTSControls] handleClose called");
     stop();
     onClose();
   }, [stop, onClose]);
@@ -215,7 +215,7 @@ export function TTSControls({ onClose, onReplay }: TTSControlsProps) {
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity style={s.stopBtn} onPress={handleStop}>
+          <TouchableOpacity style={s.stopBtn} onPress={handleClose}>
             <SquareIcon size={14} color={colors.foreground} />
           </TouchableOpacity>
         </View>
@@ -325,6 +325,7 @@ const makeStyles = (colors: ThemeColors) =>
       width: 32,
       height: 32,
       borderRadius: radius.lg,
+      backgroundColor: colors.muted,
       alignItems: "center",
       justifyContent: "center",
     },
