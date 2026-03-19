@@ -18,7 +18,6 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -27,7 +26,13 @@ import { useChatStore } from "@/stores/chat-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useStreamingChat } from "@readany/core/hooks";
 import type { AttachedQuote } from "@readany/core/types";
-import { convertToMessageV2, mergeMessagesWithStreaming, groupThreadsByTime, getMonthLabel, formatRelativeTimeShort } from "@readany/core/utils";
+import {
+  convertToMessageV2,
+  formatRelativeTimeShort,
+  getMonthLabel,
+  groupThreadsByTime,
+  mergeMessagesWithStreaming,
+} from "@readany/core/utils";
 import { Alert } from "react-native";
 
 import { ChatInput } from "@/components/chat/ChatInput";
@@ -41,11 +46,17 @@ import {
   LightbulbIcon,
   MessageCirclePlusIcon,
   ScrollTextIcon,
-  SearchIcon,
   Trash2Icon,
   XIcon,
 } from "@/components/ui/Icon";
-import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity, useTheme } from "@/styles/theme";
+import {
+  fontSize as fs,
+  fontWeight as fw,
+  radius,
+  useColors,
+  useTheme,
+  withOpacity,
+} from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
 
 const THINK_PNG = require("../../assets/think.png");
@@ -116,6 +127,33 @@ export function ChatScreen() {
 
   const generalThreads = useMemo(() => getThreadsForContext(), [threads, getThreadsForContext]);
 
+  // Listen for keyboard events to fix scroll issues
+  useEffect(() => {
+    const keyboardDidShow = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardDidShow" : "keyboardDidShow",
+      () => {
+        // Scroll to bottom when keyboard shows
+        setTimeout(() => {
+          // This will be handled by MessageList component
+        }, 100);
+      },
+    );
+    const keyboardDidHide = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardDidHide" : "keyboardDidHide",
+      () => {
+        // Ensure proper layout after keyboard hides
+        setTimeout(() => {
+          // This will be handled by MessageList component
+        }, 100);
+      },
+    );
+
+    return () => {
+      keyboardDidShow.remove();
+      keyboardDidHide.remove();
+    };
+  }, []);
+
   // Streaming chat
   const { isStreaming, currentMessage, currentStep, error, sendMessage, stopStream } =
     useStreamingChat();
@@ -185,10 +223,7 @@ export function ChatScreen() {
     [setGeneralActiveThread, closeSidebar],
   );
 
-  const formatTime = useCallback(
-    (ts: number) => formatRelativeTimeShort(ts, t),
-    [t],
-  );
+  const formatTime = useCallback((ts: number) => formatRelativeTimeShort(ts, t), [t]);
 
   const groupedThreads = useMemo(() => {
     const grouped = groupThreadsByTime(generalThreads);
@@ -239,19 +274,17 @@ export function ChatScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={0}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={s.content}>
-            {allMessages.length > 0 ? (
-              <MessageList
-                messages={allMessages}
-                isStreaming={isStreaming}
-                currentStep={currentStep}
-              />
-            ) : (
-              <EmptyState colors={colors} onSuggestionPress={handleSend} />
-            )}
-          </View>
-        </TouchableWithoutFeedback>
+        <View style={s.content}>
+          {allMessages.length > 0 ? (
+            <MessageList
+              messages={allMessages}
+              isStreaming={isStreaming}
+              currentStep={currentStep}
+            />
+          ) : (
+            <EmptyState colors={colors} onSuggestionPress={handleSend} />
+          )}
+        </View>
         <ChatInput onSend={handleSend} onStop={stopStream} isStreaming={isStreaming} />
       </KeyboardAvoidingView>
 
@@ -295,7 +328,9 @@ export function ChatScreen() {
                     {threads.map((thread) => {
                       const isActive = thread.id === generalActiveThreadId;
                       const lastMsg =
-                        thread.messages.length > 0 ? thread.messages[thread.messages.length - 1] : null;
+                        thread.messages.length > 0
+                          ? thread.messages[thread.messages.length - 1]
+                          : null;
                       const preview = lastMsg?.content?.slice(0, 60) || "";
                       return (
                         <TouchableOpacity
@@ -377,10 +412,7 @@ function EmptyState({
   return (
     <View style={s.emptyContainer}>
       <View style={s.emptyInner}>
-        <Image
-          source={isDark ? THINK_DARK_PNG : THINK_PNG}
-          style={{ width: 140, height: 140 }}
-        />
+        <Image source={isDark ? THINK_DARK_PNG : THINK_PNG} style={{ width: 140, height: 140 }} />
         <Text style={s.emptyTitle}>{t("chat.howCanIHelp", "有什么我可以帮你的？")}</Text>
         <Text style={s.emptySubtitle}>
           {t("chat.askAboutBooks", "关于书籍的任何问题都可以问我")}

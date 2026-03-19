@@ -8,7 +8,15 @@ import type { CitationPart, MessageV2, QuotePart, TextPart } from "@readany/core
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import {
+  FlatList,
+  Keyboard,
+  Platform,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { PartRenderer } from "./PartRenderer";
 import { StreamingIndicator } from "./StreamingIndicator";
 
@@ -21,7 +29,12 @@ interface MessageListProps {
 
 const BOTTOM_THRESHOLD = 80;
 
-export function MessageList({ messages, isStreaming, currentStep, onCitationClick }: MessageListProps) {
+export function MessageList({
+  messages,
+  isStreaming,
+  currentStep,
+  onCitationClick,
+}: MessageListProps) {
   const { t } = useTranslation();
   const colors = useColors();
   const s = makeStyles(colors);
@@ -32,6 +45,11 @@ export function MessageList({ messages, isStreaming, currentStep, onCitationClic
   // Track last part count for auto-scroll dependency
   const lastMsg = messages[messages.length - 1];
   const lastMsgPartsCount = lastMsg?.parts?.length ?? 0;
+  const lastMsgTextLength =
+    lastMsg?.parts?.reduce(
+      (acc, p) => acc + (p.type === "text" ? (p as TextPart).text?.length || 0 : 0),
+      0,
+    ) ?? 0;
 
   // Auto-scroll when new messages arrive or parts update
   useEffect(() => {
@@ -40,7 +58,7 @@ export function MessageList({ messages, isStreaming, currentStep, onCitationClic
         flatListRef.current?.scrollToEnd({ animated: true });
       }, 100);
     }
-  }, [messages.length, lastMsgPartsCount]);
+  }, [messages.length]);
 
   // Periodic scroll during streaming
   useEffect(() => {
@@ -52,6 +70,36 @@ export function MessageList({ messages, isStreaming, currentStep, onCitationClic
     }, 300);
     return () => clearInterval(interval);
   }, [isStreaming]);
+
+  // Force scroll to bottom when streaming ends
+  useEffect(() => {
+    if (!isStreaming && flatListRef.current && messages.length > 0) {
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: false });
+        isAtBottomRef.current = true;
+        setShowScrollDown(false);
+      }, 200);
+    }
+  }, [isStreaming, messages.length]);
+
+  // Listen for keyboard hide events to restore scroll position
+  useEffect(() => {
+    const keyboardDidHide = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardDidHide" : "keyboardDidHide",
+      () => {
+        // When keyboard hides, ensure we scroll to bottom if we were at bottom
+        if (isAtBottomRef.current && flatListRef.current && messages.length > 0) {
+          setTimeout(() => {
+            flatListRef.current?.scrollToEnd({ animated: false });
+          }, 100);
+        }
+      },
+    );
+
+    return () => {
+      keyboardDidHide.remove();
+    };
+  }, [messages.length]);
 
   const handleScroll = useCallback((e: any) => {
     const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
@@ -102,12 +150,18 @@ export function MessageList({ messages, isStreaming, currentStep, onCitationClic
         renderItem={renderMessage}
         contentContainerStyle={s.listContent}
         onScroll={handleScroll}
-        scrollEventThrottle={100}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+        removeClippedSubviews={false}
+        initialNumToRender={20}
+        maxToRenderPerBatch={10}
+        updateCellsBatchingPeriod={50}
+        bounces={true}
+        bouncesZoom={false}
         ListFooterComponent={
-          showStreamingIndicator ? <StreamingIndicator step={currentStep!} /> : null
+          showStreamingIndicator && currentStep ? <StreamingIndicator step={currentStep} /> : null
         }
       />
 
@@ -174,7 +228,13 @@ interface MessageBubbleProps {
   onCitationClick?: (citation: CitationPart) => void;
 }
 
-function MessageBubble({ message, colors, isStreaming, currentStep, onCitationClick }: MessageBubbleProps) {
+function MessageBubble({
+  message,
+  colors,
+  isStreaming,
+  currentStep,
+  onCitationClick,
+}: MessageBubbleProps) {
   const s = makeStyles(colors);
 
   // Extract citations from message parts
@@ -231,9 +291,9 @@ function MessageBubble({ message, colors, isStreaming, currentStep, onCitationCl
   return (
     <View style={s.assistantRow}>
       {message.parts.map((part) => (
-        <PartRenderer 
-          key={part.id} 
-          part={part} 
+        <PartRenderer
+          key={part.id}
+          part={part}
           citations={citations}
           onCitationClick={onCitationClick}
         />

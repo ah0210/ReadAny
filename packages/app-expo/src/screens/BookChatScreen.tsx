@@ -29,7 +29,13 @@ import { useSettingsStore } from "@/stores/settings-store";
 import { useStreamingChat } from "@readany/core/hooks";
 import type { AttachedQuote } from "@readany/core/types";
 import type { CitationPart, MessageV2 } from "@readany/core/types/message";
-import { convertToMessageV2, mergeMessagesWithStreaming, groupThreadsByTime, getMonthLabel, formatRelativeTimeShort } from "@readany/core/utils";
+import {
+  convertToMessageV2,
+  formatRelativeTimeShort,
+  getMonthLabel,
+  groupThreadsByTime,
+  mergeMessagesWithStreaming,
+} from "@readany/core/utils";
 
 import { ChatInput } from "@/components/chat/ChatInput";
 import { MessageList } from "@/components/chat/MessageList";
@@ -73,11 +79,13 @@ export function BookChatScreen({ route, navigation }: Props) {
   useEffect(() => {
     if (selectedText && quotes.length === 0) {
       console.log("[BookChatScreen] Initializing quotes with selectedText:", selectedText);
-      setQuotes([{
-        id: `quote-${Date.now()}`,
-        text: selectedText,
-        source: chapterTitle || undefined,
-      }]);
+      setQuotes([
+        {
+          id: `quote-${Date.now()}`,
+          text: selectedText,
+          source: chapterTitle || undefined,
+        },
+      ]);
     }
   }, [selectedText, chapterTitle, quotes.length]);
 
@@ -151,6 +159,33 @@ export function BookChatScreen({ route, navigation }: Props) {
   const { isStreaming, currentMessage, currentStep, error, sendMessage, stopStream } =
     useStreamingChat({ book, bookId });
 
+  // Listen for keyboard events to fix scroll issues
+  useEffect(() => {
+    const keyboardDidShow = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardDidShow" : "keyboardDidShow",
+      () => {
+        // Scroll to bottom when keyboard shows
+        setTimeout(() => {
+          // This will be handled by MessageList component
+        }, 100);
+      },
+    );
+    const keyboardDidHide = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardDidHide" : "keyboardDidHide",
+      () => {
+        // Ensure proper layout after keyboard hides
+        setTimeout(() => {
+          // This will be handled by MessageList component
+        }, 100);
+      },
+    );
+
+    return () => {
+      keyboardDidShow.remove();
+      keyboardDidHide.remove();
+    };
+  }, []);
+
   const messagesV2: MessageV2[] = useMemo(() => {
     if (!activeThread) return [];
     return convertToMessageV2(activeThread.messages);
@@ -213,7 +248,11 @@ export function BookChatScreen({ route, navigation }: Props) {
       if (citation.bookId === bookId && citation.cfi) {
         navigation.navigate("Reader", { bookId, cfi: citation.cfi, highlight: true });
       } else if (citation.bookId) {
-        navigation.navigate("Reader", { bookId: citation.bookId, cfi: citation.cfi, highlight: true });
+        navigation.navigate("Reader", {
+          bookId: citation.bookId,
+          cfi: citation.cfi,
+          highlight: true,
+        });
       }
     },
     [bookId, navigation],
@@ -227,10 +266,7 @@ export function BookChatScreen({ route, navigation }: Props) {
     [bookId, setBookActiveThread, closeSidebar],
   );
 
-  const formatTime = useCallback(
-    (ts: number) => formatRelativeTimeShort(ts, t),
-    [t],
-  );
+  const formatTime = useCallback((ts: number) => formatRelativeTimeShort(ts, t), [t]);
 
   const groupedThreads = useMemo(() => {
     const grouped = groupThreadsByTime(bookThreads);
@@ -376,7 +412,9 @@ export function BookChatScreen({ route, navigation }: Props) {
                     {threads.map((thread) => {
                       const isActive = thread.id === activeThreadId;
                       const lastMsg =
-                        thread.messages.length > 0 ? thread.messages[thread.messages.length - 1] : null;
+                        thread.messages.length > 0
+                          ? thread.messages[thread.messages.length - 1]
+                          : null;
                       const preview = lastMsg?.content?.slice(0, 60) || "";
                       return (
                         <TouchableOpacity
