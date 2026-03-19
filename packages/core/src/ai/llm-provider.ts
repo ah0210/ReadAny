@@ -1,3 +1,4 @@
+import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 /**
  * LLM Provider Factory — creates LangChain ChatModel instances from AIConfig
  *
@@ -7,7 +8,6 @@
  * - Google Gemini (native API)
  */
 import type { AIConfig, AIEndpoint } from "../types";
-import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 
 /**
  * Optional custom fetch for streaming support (e.g. expo/fetch in React Native).
@@ -37,9 +37,18 @@ export function resolveActiveEndpoint(config: AIConfig): {
   if (!endpoint.apiKey) {
     throw new Error(`API key not set for endpoint "${endpoint.name}".`);
   }
-  const model = config.activeModel;
+  let model = config.activeModel;
   if (!model) {
-    throw new Error("No model selected. Go to Settings → AI to choose a model.");
+    // Try to auto-select first available model from endpoint
+    if (endpoint.models && endpoint.models.length > 0) {
+      model = endpoint.models[0];
+    } else if (!endpoint.apiKey) {
+      throw new Error("API key not configured. Go to Settings → AI to set up your API key.");
+    } else {
+      throw new Error(
+        "No models available. Go to Settings → AI and click 'Fetch Models' to get available models.",
+      );
+    }
   }
   return { endpoint, model };
 }
@@ -159,7 +168,11 @@ export async function createChatModelFromEndpoint(
           this._reasoningMap.clear();
           let assistantIdx = 0;
           for (const msg of messages) {
-            if (msg._getType?.() === "ai" || msg.constructor?.name === "AIMessage" || msg.constructor?.name === "AIMessageChunk") {
+            if (
+              msg._getType?.() === "ai" ||
+              msg.constructor?.name === "AIMessage" ||
+              msg.constructor?.name === "AIMessageChunk"
+            ) {
               const reasoning = msg.additional_kwargs?.reasoning_content;
               if (typeof reasoning === "string") {
                 this._reasoningMap.set(assistantIdx, reasoning);
@@ -231,7 +244,11 @@ export async function createChatModelFromEndpoint(
             this._reasoningMap.clear();
             let assistantIdx = 0;
             for (const msg of messages) {
-              if (msg._getType?.() === "ai" || msg.constructor?.name === "AIMessage" || msg.constructor?.name === "AIMessageChunk") {
+              if (
+                msg._getType?.() === "ai" ||
+                msg.constructor?.name === "AIMessage" ||
+                msg.constructor?.name === "AIMessageChunk"
+              ) {
                 const reasoning = msg.additional_kwargs?.reasoning_content;
                 if (typeof reasoning === "string") {
                   this._reasoningMap.set(assistantIdx, reasoning);

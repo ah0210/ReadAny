@@ -16,6 +16,7 @@
     "ask": "Ask",
     "total": "Total",
     "back": "Back",
+    "next": "Next",
     "retry": "Retry",
     "unnamed": "Unnamed",
     "current": "Current",
@@ -24,7 +25,10 @@
     "params": "Parameters",
     "result": "Result",
     "less": "Less",
-    "more": "More"
+    "more": "More",
+    "success": "Success!",
+    "failed": "Failed",
+    "testing": "Testing..."
   },
   "sidebar": {
     "library": "Library",
@@ -695,6 +699,12 @@
     "fullscreen": "Fullscreen",
     "download": "Download Mindmap"
   },
+  "settings": {
+    "webdavUrl": "WebDAV Server URL",
+    "username": "Username",
+    "password": "App Password",
+    "testConnection": "Test Connection"
+  },
   "commandPalette": {
     "placeholder": "Type to search commands...",
     "noResults": "No results found for \"{{query}}\"",
@@ -703,5 +713,95 @@
     "settings": "Settings",
     "actions": "Actions",
     "navigation": "Navigation"
+  },
+  "onboarding": {
+    "skip": "Skip",
+    "skipForNow": "Skip for now",
+    "getStarted": "Get Started",
+    "welcome": {
+      "title": "Welcome to ReadAny",
+      "subtitle": "Your intelligent reading companion. Let's set up your ultimate reading environment.",
+      "ai": "AI Co-pilot",
+      "aiDesc": "Discuss books naturally with AI",
+      "search": "Smart Search",
+      "searchDesc": "Semantic knowledge retrieval",
+      "translate": "Instant Translation",
+      "translateDesc": "Seamless bilingual reading",
+      "start": "Get Started",
+      "f1": {
+        "title": "AI Co-pilot",
+        "desc": "Discuss directly with characters and ideas in the book."
+      },
+      "f2": {
+        "title": "Semantic Search",
+        "desc": "Find any concept, not just exact keywords."
+      },
+      "f3": {
+        "title": "Bilingual Reading",
+        "desc": "Seamless split-screen translation for any text."
+      }
+    },
+    "appearance": {
+      "title": "Appearance & Language",
+      "desc": "Customize ReadAny to suit your preferences."
+    },
+    "ai": {
+      "title": "AI Configuration",
+      "desc": "Set up your AI provider to enable smart chat and summarization.",
+      "test": "Test Connection"
+    },
+    "embedding": {
+      "title": "Smart Search",
+      "desc": "Enable semantic search by configuring an embedding model.",
+      "remoteMode": "Remote API Mode",
+      "remoteDesc": "Use your configured AI provider.",
+      "remoteInfo": "Remote API Configuration",
+      "remoteInfoDesc": "Remote mode uses your AI provider's embedding API. Make sure you have configured an AI provider in the previous step.",
+      "localMode": "Local Built-in Mode",
+      "localDesc": "Run embeddings safely on your device."
+    },
+    "translation": {
+      "title": "Translation Engine",
+      "desc": "Enable seamless bilingual reading with your preferred engine.",
+      "aiProvider": "AI Co-pilot",
+      "aiProviderDesc": "Free",
+      "deeplDesc": "Premium",
+      "apiKeyPlaceholder": "Enter your DeepL API key"
+    },
+    "sync": {
+      "title": "Cloud Sync",
+      "desc": "Keep your progress perfectly in sync across devices using WebDAV."
+    },
+    "complete": {
+      "title": "You're All Set!",
+      "desc": "Everything is configured. You can now start adding books, discussing them with AI, and translating content.",
+      "start": "Start Reading",
+      "feature1": "AI Chat",
+      "feature2": "Translation",
+      "feature3": "Cloud Sync",
+      "feature4": "Smart Search"
+    }
+  },
+  "tour": {
+    "next": "Next",
+    "prev": "Previous",
+    "done": "Done",
+    "progress": "{{current}} of {{total}}",
+    "addBook": {
+      "title": "Add Your First Book",
+      "desc": "Click here to import EPUB, PDF, and other supported formats."
+    },
+    "bookList": {
+      "title": "Your Library",
+      "desc": "All your imported books will appear here. Click any book to start reading."
+    },
+    "vectorize": {
+      "title": "Smart Vectorization",
+      "desc": "Build a semantic index for powerful AI search and chat."
+    },
+    "settings": {
+      "title": "Settings",
+      "desc": "Configure AI provider, translation engine, and more."
+    }
   }
 }

@@ -99,7 +99,11 @@ export function withPersist<T extends object>(
     const state = creator(wrappedSet, get, api);
     // Load persisted state on creation
     loadFromFS<T>(key).then((persisted) => {
-      if (persisted) set(persisted);
+      if (persisted) {
+        set({ ...persisted, _hasHydrated: true } as unknown as Partial<T>);
+      } else {
+        set({ _hasHydrated: true } as unknown as Partial<T>);
+      }
     });
     return state;
   };

@@ -21,6 +21,15 @@ config.resolver.sourceExts = [...config.resolver.sourceExts, "ts", "tsx"];
 // 4. Add .html to asset extensions so WebView can load local HTML files
 config.resolver.assetExts = [...config.resolver.assetExts, "html"];
 
+// 5. Configure SVG transformer
+const { transformerPath } = config.transformer;
+config.transformer = {
+  ...config.transformer,
+  babelTransformerPath: require.resolve("react-native-svg-transformer"),
+};
+config.resolver.assetExts = config.resolver.assetExts.filter((ext) => ext !== "svg");
+config.resolver.sourceExts = [...config.resolver.sourceExts, "svg"];
+
 // 5. Force all packages to use the same React instance from the monorepo root
 // pnpm stores packages in node_modules/.pnpm/<package>@<version>/node_modules/<package>
 // IMPORTANT: react version must match react-native's renderer version (19.1.4)

@@ -1,9 +1,10 @@
 import { useSettingsStore } from "@/stores";
 import type { AIEndpoint, AIProviderType } from "@readany/core/types";
+import type { TFunction } from "i18next";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
 import {
+  type GestureResponderEvent,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -12,7 +13,6 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  GestureResponderEvent,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LoaderIcon, PlusIcon, Trash2Icon, XIcon } from "../../components/ui/Icon";
@@ -61,52 +61,39 @@ function EndpointEditor({
   styles: ReturnType<typeof makeStyles>;
   t: TFunction;
 }) {
-  // Local state for form fields
+  // Local state for form fields - only initialized once
   const [name, setName] = useState(ep.name);
   const [apiKey, setApiKey] = useState(ep.apiKey);
   const [baseUrl, setBaseUrl] = useState(ep.baseUrl);
   const [newModelInput, setNewModelInput] = useState("");
 
-  // Sync local state when prop changes (e.g., from external update)
-  useEffect(() => {
-    setName(ep.name);
-    setApiKey(ep.apiKey);
-    setBaseUrl(ep.baseUrl);
-  }, [ep.name, ep.apiKey, ep.baseUrl]);
+  // Refs to track latest values for unmount save
+  const epRef = useRef(ep);
+  epRef.current = ep;
+  const onUpdateRef = useRef(onUpdate);
+  onUpdateRef.current = onUpdate;
+  const stateRef = useRef({ name, apiKey, baseUrl });
+  stateRef.current = { name, apiKey, baseUrl };
 
-  // Save unsaved data when component unmounts
+  // Save on unmount if there are unsaved changes
   useEffect(() => {
     return () => {
-      // Component unmounting - save any pending changes
-      if (name !== ep.name) {
-        onUpdate(ep.id, { name }).catch(console.error);
-      }
-      if (apiKey !== ep.apiKey) {
-        onUpdate(ep.id, { apiKey }).catch(console.error);
-      }
-      if (baseUrl !== ep.baseUrl) {
-        onUpdate(ep.id, { baseUrl }).catch(console.error);
+      const current = epRef.current;
+      const update = onUpdateRef.current;
+      const state = stateRef.current;
+      if (
+        state.name !== current.name ||
+        state.apiKey !== current.apiKey ||
+        state.baseUrl !== current.baseUrl
+      ) {
+        update(current.id, {
+          name: state.name,
+          apiKey: state.apiKey,
+          baseUrl: state.baseUrl,
+        }).catch(console.error);
       }
     };
-  }, [name, apiKey, baseUrl, ep.name, ep.apiKey, ep.baseUrl, ep.id, onUpdate]);
-
-  const handleSaveName = useCallback(() => {
-    if (name !== ep.name) {
-      onUpdate(ep.id, { name }).catch(console.error);
-    }
-  }, [name, ep.name, ep.id, onUpdate]);
-
-  const handleSaveApiKey = useCallback(() => {
-    if (apiKey !== ep.apiKey) {
-      onUpdate(ep.id, { apiKey }).catch(console.error);
-    }
-  }, [apiKey, ep.apiKey, ep.id, onUpdate]);
-
-  const handleSaveBaseUrl = useCallback(() => {
-    if (baseUrl !== ep.baseUrl) {
-      onUpdate(ep.id, { baseUrl }).catch(console.error);
-    }
-  }, [baseUrl, ep.baseUrl, ep.id, onUpdate]);
+  }, []);
 
   const handleAddModel = useCallback(() => {
     const trimmed = newModelInput.trim();
@@ -132,7 +119,9 @@ function EndpointEditor({
           style={styles.input}
           value={name}
           onChangeText={setName}
-          onBlur={handleSaveName}
+          onBlur={() => {
+            if (name !== ep.name) onUpdate(ep.id, { name }).catch(console.error);
+          }}
           placeholderTextColor={colors.mutedForeground}
         />
       </View>
@@ -144,10 +133,7 @@ function EndpointEditor({
           {PROVIDERS.map((p) => (
             <TouchableOpacity
               key={p.id}
-              style={[
-                styles.providerBtn,
-                ep.provider === p.id && styles.providerBtnActive,
-              ]}
+              style={[styles.providerBtn, ep.provider === p.id && styles.providerBtnActive]}
               onPress={() => onUpdate(ep.id, { provider: p.id }).catch(console.error)}
               activeOpacity={0.7}
             >
@@ -171,7 +157,9 @@ function EndpointEditor({
           style={styles.input}
           value={apiKey}
           onChangeText={setApiKey}
-          onBlur={handleSaveApiKey}
+          onBlur={() => {
+            if (apiKey !== ep.apiKey) onUpdate(ep.id, { apiKey }).catch(console.error);
+          }}
           placeholder="sk-..."
           placeholderTextColor={colors.mutedForeground}
         />
@@ -184,7 +172,9 @@ function EndpointEditor({
           style={styles.input}
           value={baseUrl}
           onChangeText={setBaseUrl}
-          onBlur={handleSaveBaseUrl}
+          onBlur={() => {
+            if (baseUrl !== ep.baseUrl) onUpdate(ep.id, { baseUrl }).catch(console.error);
+          }}
           placeholderTextColor={colors.mutedForeground}
           autoCapitalize="none"
         />
@@ -193,9 +183,7 @@ function EndpointEditor({
       {/* Models */}
       <View style={styles.fieldGroup}>
         <View style={styles.modelsHeader}>
-          <Text style={styles.fieldLabel}>
-            {t("settings.ai_modelsList", "模型列表")}
-          </Text>
+          <Text style={styles.fieldLabel}>{t("settings.ai_modelsList", "模型列表")}</Text>
           <TouchableOpacity
             style={styles.fetchBtn}
             onPress={() => onFetchModels(ep)}
@@ -204,9 +192,7 @@ function EndpointEditor({
             {ep.modelsFetching ? (
               <LoaderIcon size={12} color={colors.primary} />
             ) : (
-              <Text style={styles.fetchBtnText}>
-                {t("settings.ai_fetchModels", "获取模型")}
-              </Text>
+              <Text style={styles.fetchBtnText}>{t("settings.ai_fetchModels", "获取模型")}</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -216,10 +202,7 @@ function EndpointEditor({
           {ep.models.map((m) => {
             const modelActive = aiConfig.activeModel === m && isActive;
             return (
-              <View
-                key={m}
-                style={[styles.modelTag, modelActive && styles.modelTagActive]}
-              >
+              <View key={m} style={[styles.modelTag, modelActive && styles.modelTagActive]}>
                 <TouchableOpacity
                   onPress={() => {
                     setActiveEndpoint(ep.id);
@@ -227,10 +210,7 @@ function EndpointEditor({
                   }}
                 >
                   <Text
-                    style={[
-                      styles.modelTagText,
-                      modelActive && styles.modelTagTextActive,
-                    ]}
+                    style={[styles.modelTagText, modelActive && styles.modelTagTextActive]}
                     numberOfLines={1}
                   >
                     {m}
@@ -266,11 +246,7 @@ function EndpointEditor({
             onChangeText={setNewModelInput}
             onSubmitEditing={handleAddModel}
           />
-          <TouchableOpacity
-            style={styles.addModelBtn}
-            onPress={handleAddModel}
-            activeOpacity={0.8}
-          >
+          <TouchableOpacity style={styles.addModelBtn} onPress={handleAddModel} activeOpacity={0.8}>
             <Text style={styles.addModelBtnText}>{t("common.add", "添加")}</Text>
           </TouchableOpacity>
         </View>
@@ -444,12 +420,7 @@ export default function AISettingsScreen() {
                 onResponderGrant={handleSliderTouch}
                 onResponderMove={handleSliderTouch}
               >
-                <View
-                  style={[
-                    styles.sliderRange,
-                    { width: `${aiConfig.temperature * 100}%` },
-                  ]}
-                />
+                <View style={[styles.sliderRange, { width: `${aiConfig.temperature * 100}%` }]} />
               </View>
               <View style={styles.sliderMarks}>
                 {[0, 0.5, 1].map((v) => (
@@ -477,7 +448,7 @@ export default function AISettingsScreen() {
                 style={styles.paramInput}
                 value={String(aiConfig.maxTokens)}
                 onChangeText={(v) => {
-                  const num = parseInt(v, 10);
+                  const num = Number.parseInt(v, 10);
                   if (!isNaN(num) && num > 0) {
                     updateAIConfig({ maxTokens: num });
                   }
@@ -492,7 +463,7 @@ export default function AISettingsScreen() {
                 style={styles.paramInput}
                 value={String(aiConfig.slidingWindowSize)}
                 onChangeText={(v) => {
-                  const num = parseInt(v, 10);
+                  const num = Number.parseInt(v, 10);
                   if (!isNaN(num) && num > 0) {
                     updateAIConfig({ slidingWindowSize: num });
                   }

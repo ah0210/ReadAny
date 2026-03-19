@@ -1,13 +1,9 @@
+import { create } from "zustand";
 /**
  * Settings store — global reading settings, AI config, translation config
  */
-import type {
-  AIConfig,
-  AIEndpoint,
-  ReadSettings,
-} from "../types";
+import type { AIConfig, AIEndpoint, ReadSettings } from "../types";
 import type { TranslationConfig, TranslationTargetLang } from "../types/translation";
-import { create } from "zustand";
 import { withPersist } from "./persist";
 
 export interface SettingsState {
@@ -15,11 +11,18 @@ export interface SettingsState {
   translationConfig: TranslationConfig;
   aiConfig: AIConfig;
   settingsUpdatedAt: number;
+  hasCompletedOnboarding: boolean;
+  showOnboardingGuide: boolean;
+  _hasHydrated: boolean;
 
   // Actions
+  completeOnboarding: () => void;
+  setShowOnboardingGuide: (show: boolean) => void;
   updateReadSettings: (updates: Partial<ReadSettings>) => void;
   updateTranslationConfig: (updates: Partial<TranslationConfig>) => void;
-  updateAIConfig: (updates: Partial<Pick<AIConfig, "temperature" | "maxTokens" | "slidingWindowSize">>) => void;
+  updateAIConfig: (
+    updates: Partial<Pick<AIConfig, "temperature" | "maxTokens" | "slidingWindowSize">>,
+  ) => void;
 
   // Endpoint management
   addEndpoint: (endpoint: AIEndpoint) => void;
@@ -137,7 +140,10 @@ async function fetchAnthropicModels(endpoint: AIEndpoint): Promise<string[]> {
 
 /** Google Gemini — list models via generativelanguage API */
 async function fetchGoogleModels(endpoint: AIEndpoint): Promise<string[]> {
-  const baseUrl = (endpoint.baseUrl || "https://generativelanguage.googleapis.com").replace(/\/+$/, "");
+  const baseUrl = (endpoint.baseUrl || "https://generativelanguage.googleapis.com").replace(
+    /\/+$/,
+    "",
+  );
   const response = await fetch(`${baseUrl}/v1beta/models?key=${endpoint.apiKey}`);
   if (!response.ok) {
     if (response.status === 404 || response.status === 403) {
@@ -183,137 +189,142 @@ async function fetchDeepSeekModels(endpoint: AIEndpoint): Promise<string[]> {
 
 export const useSettingsStore = create<SettingsState>()(
   withPersist("settings", (set, get, _api) => ({
-  readSettings: defaultReadSettings,
-  translationConfig: defaultTranslationConfig,
-  aiConfig: defaultAIConfig,
-  settingsUpdatedAt: 0,
+    readSettings: defaultReadSettings,
+    translationConfig: defaultTranslationConfig,
+    aiConfig: defaultAIConfig,
+    settingsUpdatedAt: 0,
+    hasCompletedOnboarding: false,
+    showOnboardingGuide: true,
+    _hasHydrated: false,
 
-  updateReadSettings: (updates) =>
-    set((state) => ({
-      readSettings: { ...state.readSettings, ...updates },
-      settingsUpdatedAt: Date.now(),
-    })),
+    completeOnboarding: () => set({ hasCompletedOnboarding: true }),
+    setShowOnboardingGuide: (show: boolean) => set({ showOnboardingGuide: show }),
 
-  updateTranslationConfig: (updates) =>
-    set((state) => ({
-      translationConfig: { ...state.translationConfig, ...updates },
-      settingsUpdatedAt: Date.now(),
-    })),
+    updateReadSettings: (updates) =>
+      set((state) => ({
+        readSettings: { ...state.readSettings, ...updates },
+        settingsUpdatedAt: Date.now(),
+      })),
 
-  updateAIConfig: (updates) =>
-    set((state) => ({
-      aiConfig: { ...state.aiConfig, ...updates },
-    })),
+    updateTranslationConfig: (updates) =>
+      set((state) => ({
+        translationConfig: { ...state.translationConfig, ...updates },
+        settingsUpdatedAt: Date.now(),
+      })),
 
-  // --- Endpoint management ---
+    updateAIConfig: (updates) =>
+      set((state) => ({
+        aiConfig: { ...state.aiConfig, ...updates },
+      })),
 
-  addEndpoint: (endpoint) =>
-    set((state) => ({
-      aiConfig: {
-        ...state.aiConfig,
-        endpoints: [...state.aiConfig.endpoints, endpoint],
-      },
-    })),
+    // --- Endpoint management ---
 
-  updateEndpoint: (id, updates) =>
-    set((state) => ({
-      aiConfig: {
-        ...state.aiConfig,
-        endpoints: state.aiConfig.endpoints.map((ep) =>
-          ep.id === id ? { ...ep, ...updates } : ep,
-        ),
-      },
-    })),
-
-  removeEndpoint: (id) =>
-    set((state) => {
-      const newEndpoints = state.aiConfig.endpoints.filter((ep) => ep.id !== id);
-      const newActiveId =
-        state.aiConfig.activeEndpointId === id
-          ? newEndpoints[0]?.id || ""
-          : state.aiConfig.activeEndpointId;
-      return {
+    addEndpoint: (endpoint) =>
+      set((state) => ({
         aiConfig: {
           ...state.aiConfig,
-          endpoints: newEndpoints,
-          activeEndpointId: newActiveId,
-          activeModel:
-            state.aiConfig.activeEndpointId === id ? "" : state.aiConfig.activeModel,
+          endpoints: [...state.aiConfig.endpoints, endpoint],
         },
-      };
-    }),
+      })),
 
-  setActiveEndpoint: (id) =>
-    set((state) => ({
-      aiConfig: {
-        ...state.aiConfig,
-        activeEndpointId: id,
-        activeModel: "", // reset model when switching endpoint
-      },
-    })),
+    updateEndpoint: (id, updates) =>
+      set((state) => ({
+        aiConfig: {
+          ...state.aiConfig,
+          endpoints: state.aiConfig.endpoints.map((ep) =>
+            ep.id === id ? { ...ep, ...updates } : ep,
+          ),
+        },
+      })),
 
-  setActiveModel: (model) =>
-    set((state) => ({
-      aiConfig: { ...state.aiConfig, activeModel: model },
-    })),
+    removeEndpoint: (id) =>
+      set((state) => {
+        const newEndpoints = state.aiConfig.endpoints.filter((ep) => ep.id !== id);
+        const newActiveId =
+          state.aiConfig.activeEndpointId === id
+            ? newEndpoints[0]?.id || ""
+            : state.aiConfig.activeEndpointId;
+        return {
+          aiConfig: {
+            ...state.aiConfig,
+            endpoints: newEndpoints,
+            activeEndpointId: newActiveId,
+            activeModel: state.aiConfig.activeEndpointId === id ? "" : state.aiConfig.activeModel,
+          },
+        };
+      }),
 
-  getActiveEndpoint: () => {
-    const state = get();
-    return state.aiConfig.endpoints.find((ep) => ep.id === state.aiConfig.activeEndpointId);
-  },
+    setActiveEndpoint: (id) =>
+      set((state) => ({
+        aiConfig: {
+          ...state.aiConfig,
+          activeEndpointId: id,
+          activeModel: "", // reset model when switching endpoint
+        },
+      })),
 
-  fetchModels: async (endpointId) => {
-    const state = get();
-    const endpoint = state.aiConfig.endpoints.find((ep) => ep.id === endpointId);
-    if (!endpoint) return [];
+    setActiveModel: (model) =>
+      set((state) => ({
+        aiConfig: { ...state.aiConfig, activeModel: model },
+      })),
 
-    // Mark as fetching
-    set((s) => ({
-      aiConfig: {
-        ...s.aiConfig,
-        endpoints: s.aiConfig.endpoints.map((ep) =>
-          ep.id === endpointId ? { ...ep, modelsFetching: true } : ep,
-        ),
-      },
-    }));
+    getActiveEndpoint: () => {
+      const state = get();
+      return state.aiConfig.endpoints.find((ep) => ep.id === state.aiConfig.activeEndpointId);
+    },
 
-    try {
-      const models = await fetchModelsFromEndpoint(endpoint);
+    fetchModels: async (endpointId) => {
+      const state = get();
+      const endpoint = state.aiConfig.endpoints.find((ep) => ep.id === endpointId);
+      if (!endpoint) return [];
+
+      // Mark as fetching
       set((s) => ({
         aiConfig: {
           ...s.aiConfig,
           endpoints: s.aiConfig.endpoints.map((ep) =>
-            ep.id === endpointId
-              ? { ...ep, models, modelsFetched: true, modelsFetching: false }
-              : ep,
+            ep.id === endpointId ? { ...ep, modelsFetching: true } : ep,
           ),
         },
       }));
-      return models;
-    } catch (err) {
-      console.error("Failed to fetch models:", err);
-      set((s) => ({
-        aiConfig: {
-          ...s.aiConfig,
-          endpoints: s.aiConfig.endpoints.map((ep) =>
-            ep.id === endpointId ? { ...ep, modelsFetching: false } : ep,
-          ),
-        },
-      }));
-      return [];
-    }
-  },
 
-  setTranslationLang: (lang) =>
-    set((state) => ({
-      translationConfig: { ...state.translationConfig, targetLang: lang },
-    })),
+      try {
+        const models = await fetchModelsFromEndpoint(endpoint);
+        set((s) => ({
+          aiConfig: {
+            ...s.aiConfig,
+            endpoints: s.aiConfig.endpoints.map((ep) =>
+              ep.id === endpointId
+                ? { ...ep, models, modelsFetched: true, modelsFetching: false }
+                : ep,
+            ),
+          },
+        }));
+        return models;
+      } catch (err) {
+        console.error("Failed to fetch models:", err);
+        set((s) => ({
+          aiConfig: {
+            ...s.aiConfig,
+            endpoints: s.aiConfig.endpoints.map((ep) =>
+              ep.id === endpointId ? { ...ep, modelsFetching: false } : ep,
+            ),
+          },
+        }));
+        return [];
+      }
+    },
 
-  resetToDefaults: () =>
-    set({
-      readSettings: defaultReadSettings,
-      translationConfig: defaultTranslationConfig,
-      aiConfig: defaultAIConfig,
-    }),
-})),
+    setTranslationLang: (lang) =>
+      set((state) => ({
+        translationConfig: { ...state.translationConfig, targetLang: lang },
+      })),
+
+    resetToDefaults: () =>
+      set({
+        readSettings: defaultReadSettings,
+        translationConfig: defaultTranslationConfig,
+        aiConfig: defaultAIConfig,
+      }),
+  })),
 );

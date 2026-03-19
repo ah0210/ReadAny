@@ -22,8 +22,10 @@ import { NotesPage } from "@/components/notes/NotesPage";
 import { ReaderView, evictBlobCache } from "@/components/reader/ReaderView";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { ReadingStatsPanel } from "@/components/stats/ReadingStatsPanel";
+import { OnboardingModal } from "@/components/onboarding/OnboardingModal";
 import SkillsPage from "@/pages/Skills";
 import { useAppStore } from "@/stores/app-store";
+import { useSettingsStore } from "@readany/core/stores/settings-store";
 import { useLibraryStore } from "@/stores/library-store";
 import { useReaderStore } from "@/stores/reader-store";
 import { BookOpen } from "lucide-react";
@@ -55,6 +57,7 @@ export function AppLayout() {
   const initTab = useReaderStore((s) => s.initTab);
   const readerStoreTabs = useReaderStore((s) => s.tabs);
   const books = useLibraryStore((s) => s.books);
+  const { hasCompletedOnboarding, _hasHydrated } = useSettingsStore();
   const { t } = useTranslation();
 
   // Command palette state
@@ -184,6 +187,7 @@ export function AppLayout() {
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-muted">
+      {_hasHydrated && <OnboardingModal />}
       <TabBar />
       <main className="relative flex-1 overflow-hidden">
         {/* === Home layer (sidebar + content card) === */}

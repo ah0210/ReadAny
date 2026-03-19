@@ -55,6 +55,7 @@ export function HomePage() {
       <div className="flex shrink-0 items-center justify-between px-6 pt-5 pb-2">
         <h1 className="text-3xl font-bold text-foreground">{activeTag === "__uncategorized__" ? t("sidebar.uncategorized") : activeTag || t("home.library")}</h1>
         <button
+          id="tour-add-book"
           type="button"
           onClick={handleImportClick}
           className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
@@ -83,7 +84,7 @@ export function HomePage() {
       )}
 
       {/* Book display */}
-      <div className="flex-1 overflow-y-auto px-6 pb-4">
+      <div id="tour-book-list" className="flex-1 overflow-y-auto px-6 pb-4">
         <BookGrid books={filtered} />
       </div>
     </div>
