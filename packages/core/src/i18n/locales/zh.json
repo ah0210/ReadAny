@@ -763,6 +763,7 @@
       "desc": "配置你偏好的翻译引擎，实现无缝中外双语对照阅读。",
       "aiProvider": "AI 翻译",
       "aiProviderDesc": "免费",
+      "deeplProviderName": "DeepL Pro",
       "deeplDesc": "高级",
       "apiKeyPlaceholder": "输入你的 DeepL API 密钥"
     },

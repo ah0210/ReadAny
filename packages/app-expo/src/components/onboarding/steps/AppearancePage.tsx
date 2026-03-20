@@ -24,17 +24,17 @@ export function AppearancePage() {
   const themes: { id: ThemeMode; name: string; icon: React.ReactNode }[] = [
     {
       id: "light",
-      name: t("settings.light", "浅色"),
+      name: t("settings.light", "Light"),
       icon: <Sun size={24} color={colors.foreground} />,
     },
     {
       id: "dark",
-      name: t("settings.dark", "深色"),
+      name: t("settings.dark", "Dark"),
       icon: <Moon size={24} color={colors.foreground} />,
     },
     {
       id: "sepia",
-      name: t("settings.sepia", "护眼"),
+      name: t("settings.sepia", "Sepia"),
       icon: <Coffee size={24} color={colors.foreground} />,
     },
   ];

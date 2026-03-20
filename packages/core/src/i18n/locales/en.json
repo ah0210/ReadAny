@@ -769,6 +769,7 @@
       "desc": "Enable seamless bilingual reading with your preferred engine.",
       "aiProvider": "AI Co-pilot",
       "aiProviderDesc": "Free",
+      "deeplProviderName": "DeepL Pro",
       "deeplDesc": "Premium",
       "apiKeyPlaceholder": "Enter your DeepL API key"
     },

@@ -206,7 +206,7 @@ export function AIPage() {
           </View>
 
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t("settings.aiProvider", "Provider")}</Text>
+            <Text style={styles.sectionTitle}>{t("settings.ai_provider", "Provider")}</Text>
             <View style={styles.providerGrid}>
               {providers.map((p) => {
                 const isActive = provider === p.id;
