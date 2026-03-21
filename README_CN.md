@@ -18,7 +18,7 @@
 
 <p align="center">
   <a href="https://github.com/codedogQBY/ReadAny/releases/latest">
-    <img src="https://img.shields.io/github/v/release/codedogQBY/ReadAny?color=blue&label=下载" alt="Release">
+    <img src="https://img.shields.io/github/v/release/codedogQBY/ReadAny?color=blue&label=Download" alt="Release">
   </a>
   <a href="https://github.com/codedogQBY/ReadAny/stargazers">
     <img src="https://img.shields.io/github/stars/codedogQBY/ReadAny?color=yellow" alt="Stars">
