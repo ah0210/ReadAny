@@ -10,6 +10,8 @@ import { useTheme } from "@/styles/ThemeContext";
  */
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { useTranslation } from "react-i18next";
+import { Platform } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export type TabParamList = {
   Library: undefined;
@@ -23,9 +25,16 @@ const Tab = createBottomTabNavigator<TabParamList>();
 export function TabNavigator() {
   const { t } = useTranslation();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+
+  // Some Android devices (e.g. OnePlus Ace5 Ultra) underreport the bottom
+  // safe area inset, causing tab bar labels to be clipped by the gesture
+  // navigation bar. Ensure a minimum bottom inset so content stays visible.
+  const bottomInset = Platform.OS === "android" ? Math.max(insets.bottom, 16) : insets.bottom;
 
   return (
     <Tab.Navigator
+      safeAreaInsets={{ ...insets, bottom: bottomInset }}
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
