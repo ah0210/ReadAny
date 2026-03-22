@@ -28,6 +28,7 @@ import {
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { readingStatsService } from "@readany/core/stats";
+import Constants from "expo-constants";
 import type { DailyStats, OverallStats } from "@readany/core/stats";
 /**
  * ProfileScreen — matching Tauri mobile ProfilePage exactly.
@@ -429,7 +430,7 @@ export function ProfileScreen() {
         ))}
 
         {/* Version */}
-        <Text style={s.version}>{t("profile.version", { version: "1.0.0" })}</Text>
+        <Text style={s.version}>{t("profile.version", { version: Constants.expoConfig?.version ?? "1.0.0" })}</Text>
       </ScrollView>
     </SafeAreaView>
   );
