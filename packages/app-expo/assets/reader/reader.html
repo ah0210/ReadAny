@@ -112,6 +112,7 @@
     let searchGenerator = null;
     let searchResults = [];
     let searchIndex = 0;
+    const loadedDocuments = new Set();
 
     // Store user annotations for re-rendering on page change
     const userAnnotations = new Map();
@@ -291,6 +292,9 @@
     async function openBook(msg) {
       const container = document.getElementById('reader-container');
       const loading = document.getElementById('loading');
+      
+      // Clear loaded documents set when opening a new book
+      loadedDocuments.clear();
 
       try {
         let file;
@@ -320,6 +324,7 @@
         el.addEventListener('load', (e) => {
           const { doc, index } = e.detail;
           loading.classList.add('hidden');
+          loadedDocuments.add(doc);
           applyDocStyles(doc);
           attachTapListener(doc);
           attachSelectionListener(doc);
@@ -552,6 +557,32 @@
       }
     }
 
+    function updateAllDocumentsTheme() {
+      const bgColor = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#1c1c1e';
+      const textColor = getComputedStyle(document.documentElement).getPropertyValue('--fg').trim() || '#e8e8ed';
+      const mutedColor = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#7c7c82';
+      
+      loadedDocuments.forEach(doc => {
+        // Update existing style if it exists, or create new one
+        let style = doc.querySelector('style[data-theme-colors]');
+        if (!style) {
+          style = doc.createElement('style');
+          style.setAttribute('data-theme-colors', 'true');
+          doc.head.appendChild(style);
+        }
+        style.textContent = `
+          * { -webkit-touch-callout: none !important; -webkit-user-select: text !important; user-select: text !important; }
+          ::selection { background: rgba(250, 204, 21, 0.4) !important; }
+          html, body {
+            background-color: ${bgColor} !important;
+            color: ${textColor} !important;
+          }
+          a { color: var(--primary, #3b82f6) !important; }
+          .text-muted, [class*="muted"], [class*="secondary"] { color: ${mutedColor} !important; }
+        `;
+      });
+    }
+
     function setThemeColors(colors) {
       document.documentElement.style.setProperty('--bg', colors.background || '#1c1c1e');
       document.documentElement.style.setProperty('--fg', colors.foreground || '#e8e8ed');
@@ -563,6 +594,8 @@
       if (view && view.setSearchIndicator) {
         view.setSearchIndicator('outline', { color: colors.primary || '#3b82f6' });
       }
+      // Update all loaded documents with new theme colors
+      updateAllDocumentsTheme();
     }
 
     // ─── Document styles ───
@@ -571,10 +604,23 @@
         img.style.maxWidth = '100%';
         img.style.height = 'auto';
       }
+      
+      // Get theme colors from parent document
+      const parentDoc = window.top?.document || document;
       const style = doc.createElement('style');
+      const bgColor = getComputedStyle(parentDoc.documentElement).getPropertyValue('--bg').trim() || '#1c1c1e';
+      const textColor = getComputedStyle(parentDoc.documentElement).getPropertyValue('--fg').trim() || '#e8e8ed';
+      const mutedColor = getComputedStyle(parentDoc.documentElement).getPropertyValue('--muted').trim() || '#7c7c82';
+      
       style.textContent = `
         * { -webkit-touch-callout: none !important; -webkit-user-select: text !important; user-select: text !important; }
         ::selection { background: rgba(250, 204, 21, 0.4) !important; }
+        html, body {
+          background-color: ${bgColor} !important;
+          color: ${textColor} !important;
+        }
+        a { color: var(--primary, #3b82f6) !important; }
+        .text-muted, [class*="muted"], [class*="secondary"] { color: ${mutedColor} !important; }
       `;
       doc.head.appendChild(style);
       doc.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); return false; }, true);
