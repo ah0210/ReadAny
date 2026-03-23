@@ -38,7 +38,7 @@ const PROVIDER_DEFAULTS: Record<AIProviderType, { baseUrl: string; name: string 
   openai: { baseUrl: "https://api.openai.com/v1", name: "OpenAI" },
   anthropic: { baseUrl: "", name: "Anthropic" },
   google: { baseUrl: "", name: "Google" },
-  deepseek: { baseUrl: "https://api.deepseek.com", name: "DeepSeek" },
+  deepseek: { baseUrl: "https://api.deepseek.com/v1", name: "DeepSeek" },
 };
 
 // Individual endpoint editor with local state
