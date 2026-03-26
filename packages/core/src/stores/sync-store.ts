@@ -5,13 +5,11 @@
  */
 
 import { create } from "zustand";
-import { getVectorDB, hasVectorDB } from "../rag/vector-db";
 import { getPlatformService } from "../services/platform";
 import type { S3Config, SyncConfig, WebDavConfig } from "../sync/sync-backend";
 import { DEFAULT_SYNC_CONFIG, SYNC_CONFIG_KEY, SYNC_SECRET_KEYS } from "../sync/sync-backend";
-import { createSyncBackend, getSecretKeyForBackend } from "../sync/sync-backend-factory";
-import { determineSyncDirection, runSync } from "../sync/sync-engine";
 import type { ISyncBackend } from "../sync/sync-backend";
+import { createSyncBackend, getSecretKeyForBackend } from "../sync/sync-backend-factory";
 import type { SyncDirection, SyncProgress, SyncResult, SyncStatusType } from "../sync/sync-types";
 import { WebDavClient } from "../sync/webdav-client";
 
@@ -35,8 +33,18 @@ export interface SyncState {
   loadConfig: () => Promise<void>;
 
   // WebDAV actions
-  saveWebDavConfig: (url: string, username: string, password: string, allowInsecure?: boolean) => Promise<void>;
-  testWebDavConnection: (url: string, username: string, password: string, allowInsecure?: boolean) => Promise<boolean>;
+  saveWebDavConfig: (
+    url: string,
+    username: string,
+    password: string,
+    allowInsecure?: boolean,
+  ) => Promise<void>;
+  testWebDavConnection: (
+    url: string,
+    username: string,
+    password: string,
+    allowInsecure?: boolean,
+  ) => Promise<boolean>;
 
   // S3 actions
   saveS3Config: (
@@ -55,9 +63,18 @@ export interface SyncState {
   ) => Promise<boolean>;
 
   // Sync actions
-  syncNow: (resolvedDirection?: "upload" | "download", useIncremental?: boolean) => Promise<SyncResult | null>;
+  syncNow: (
+    resolvedDirection?: "upload" | "download",
+    useIncremental?: boolean,
+  ) => Promise<SyncResult | null>;
   /** Run sync using an explicitly provided backend (e.g. for LAN sync) */
-  syncWithBackend: (backend: ISyncBackend, resolvedDirection?: "upload" | "download", useIncremental?: boolean) => Promise<SyncResult | null>;
+  syncWithBackend: (
+    backend: ISyncBackend,
+    resolvedDirection?: "upload" | "download",
+    useIncremental?: boolean,
+  ) => Promise<SyncResult | null>;
+  /** New simplified sync (JSON-based, no full db file sync) */
+  syncSimple: (backend: ISyncBackend) => Promise<SyncResult | null>;
   setAutoSync: (enabled: boolean) => Promise<void>;
   setWifiOnly: (enabled: boolean) => Promise<void>;
   setNotifyOnComplete: (enabled: boolean) => Promise<void>;
@@ -79,12 +96,14 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     try {
       const platform = getPlatformService();
       const configStr = await platform.kvGetItem(SYNC_CONFIG_KEY);
-      console.log(`[SyncStore] loadConfig: configStr = ${configStr ? 'found' : 'not found'}`);
+      console.log(`[SyncStore] loadConfig: configStr = ${configStr ? "found" : "not found"}`);
       if (configStr) {
         const config = JSON.parse(configStr) as SyncConfig;
         const secretKey = config.type !== "lan" ? getSecretKeyForBackend(config.type) : null;
         const secret = secretKey ? await platform.kvGetItem(secretKey) : null;
-        console.log(`[SyncStore] loadConfig: secretKey = ${secretKey}, secret = ${secret ? 'found' : 'not found'}`);
+        console.log(
+          `[SyncStore] loadConfig: secretKey = ${secretKey}, secret = ${secret ? "found" : "not found"}`,
+        );
 
         const isConfigured =
           config.type === "lan"
@@ -95,7 +114,9 @@ export const useSyncStore = create<SyncState>((set, get) => ({
                   (config.type === "s3" && config.endpoint && config.bucket && config.accessKeyId))
               );
 
-        console.log(`[SyncStore] loadConfig: isConfigured = ${isConfigured}, backendType = ${config.type}`);
+        console.log(
+          `[SyncStore] loadConfig: isConfigured = ${isConfigured}, backendType = ${config.type}`,
+        );
         set({
           config,
           isConfigured,
@@ -103,7 +124,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         });
       }
     } catch (e) {
-      console.error('[SyncStore] loadConfig error:', e);
+      console.error("[SyncStore] loadConfig error:", e);
     }
   },
 
@@ -123,14 +144,18 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         (existing as WebDavConfig)?.notifyOnComplete ?? DEFAULT_SYNC_CONFIG.notifyOnComplete,
     };
     console.log(`[SyncStore] saveWebDavConfig: saving config and password...`);
-    console.log(`[SyncStore] saveWebDavConfig: SYNC_CONFIG_KEY = "${SYNC_CONFIG_KEY}", SYNC_SECRET_KEYS.webdav = "${SYNC_SECRET_KEYS.webdav}"`);
+    console.log(
+      `[SyncStore] saveWebDavConfig: SYNC_CONFIG_KEY = "${SYNC_CONFIG_KEY}", SYNC_SECRET_KEYS.webdav = "${SYNC_SECRET_KEYS.webdav}"`,
+    );
     await platform.kvSetItem(SYNC_CONFIG_KEY, JSON.stringify(config));
     await platform.kvSetItem(SYNC_SECRET_KEYS.webdav, password);
-    
+
     // Verify save
     const savedPassword = await platform.kvGetItem(SYNC_SECRET_KEYS.webdav);
-    console.log(`[SyncStore] saveWebDavConfig: password verification = ${savedPassword ? 'SUCCESS' : 'FAILED'}`);
-    
+    console.log(
+      `[SyncStore] saveWebDavConfig: password verification = ${savedPassword ? "SUCCESS" : "FAILED"}`,
+    );
+
     set({ config, isConfigured: true, backendType: "webdav" });
   },
 
@@ -174,7 +199,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     }
   },
 
-  syncNow: async (resolvedDirection, useIncremental) => {
+  syncNow: async (_resolvedDirection, _useIncremental) => {
     const state = get();
     if (state.status !== "idle") return null;
     if (!state.isConfigured || !state.config) {
@@ -213,80 +238,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         throw new Error("Failed to connect to sync backend");
       }
 
-      let direction: "upload" | "download";
-      let remoteManifest: import("../sync/sync-types").RemoteSyncManifest | null = null;
-
-      if (resolvedDirection) {
-        direction = resolvedDirection;
-      } else {
-        const result = await determineSyncDirection(backend);
-        remoteManifest = result.remoteManifest;
-
-        if (result.direction === "none") {
-          set({ status: "idle", lastSyncAt: Date.now() });
-          return {
-            success: true,
-            direction: "none",
-            filesUploaded: 0,
-            filesDownloaded: 0,
-            durationMs: 0,
-          };
-        }
-
-        if (result.direction === "conflict") {
-          set({ status: "idle", pendingDirection: "conflict" });
-          return null;
-        }
-
-        direction = result.direction;
-      }
-
-      set({
-        status: direction === "upload" ? "uploading" : "downloading",
-        progress: null,
-      });
-
-      const onProgress = (progress: SyncProgress) => {
-        set({ progress });
-      };
-
-      const onDatabaseReplaced = async () => {
-        if (hasVectorDB()) {
-          const vectorDB = getVectorDB();
-          if (vectorDB?.rebuild && (await vectorDB.isReady())) {
-            console.log("[Sync] Rebuilding vector index after download...");
-            try {
-              const count = await vectorDB.rebuild();
-              console.log(`[Sync] Rebuilt ${count} vectors`);
-            } catch (e) {
-              console.error("[Sync] Failed to rebuild vector index:", e);
-            }
-          }
-        }
-      };
-
-      const shouldUseIncremental = useIncremental ?? (remoteManifest !== null);
-      console.log(`[SyncStore] Using incremental sync: ${shouldUseIncremental} (hasRemoteManifest: ${remoteManifest !== null})`);
-
-      const syncResult = await runSync(
-        backend,
-        direction,
-        onProgress,
-        remoteManifest,
-        onDatabaseReplaced,
-        shouldUseIncremental,
-      );
-
-      set({
-        status: "idle",
-        lastSyncAt: Date.now(),
-        lastResult: syncResult,
-        error: syncResult.error || null,
-        pendingDirection: null,
-        progress: null,
-      });
-
-      return syncResult;
+      // Use new simplified sync (JSON-based)
+      return await get().syncSimple(backend);
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
       set({ status: "error", error, pendingDirection: null, progress: null });
@@ -301,56 +254,76 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     }
   },
 
-  syncWithBackend: async (backend, resolvedDirection, useIncremental = true) => {
+  syncWithBackend: async (backend, _resolvedDirection, _useIncremental = true) => {
     const state = get();
     if (state.status !== "idle") return null;
 
     set({ status: "checking", error: null, pendingDirection: null });
 
     try {
-      let direction: "upload" | "download";
-      let remoteManifest: import("../sync/sync-types").RemoteSyncManifest | null = null;
-
-      if (resolvedDirection) {
-        direction = resolvedDirection;
-      } else {
-        const result = await determineSyncDirection(backend);
-        remoteManifest = result.remoteManifest;
-
-        if (result.direction === "none") {
-          set({ status: "idle", lastSyncAt: Date.now() });
-          return { success: true, direction: "none", filesUploaded: 0, filesDownloaded: 0, durationMs: 0 };
-        }
-
-        if (result.direction === "conflict") {
-          set({ status: "idle", pendingDirection: "conflict" });
-          return null;
-        }
-
-        direction = result.direction;
-      }
-
-      set({ status: direction === "upload" ? "uploading" : "downloading", progress: null });
-
-      const onProgress = (progress: SyncProgress) => { set({ progress }); };
-
-      const onDatabaseReplaced = async () => {
-        if (hasVectorDB()) {
-          const vectorDB = getVectorDB();
-          if (vectorDB?.rebuild && (await vectorDB.isReady())) {
-            try { await vectorDB.rebuild(); } catch (e) { console.error("[Sync] Failed to rebuild vector index:", e); }
-          }
-        }
-      };
-
-      const syncResult = await runSync(backend, direction, onProgress, remoteManifest, onDatabaseReplaced, useIncremental);
-
-      set({ status: "idle", lastSyncAt: Date.now(), lastResult: syncResult, error: syncResult.error || null, pendingDirection: null, progress: null });
-      return syncResult;
+      // Use new simplified sync (JSON-based, no full db file sync)
+      return await get().syncSimple(backend);
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
       set({ status: "error", error, pendingDirection: null, progress: null });
-      return { success: false, direction: "none", filesUploaded: 0, filesDownloaded: 0, durationMs: 0, error };
+      return {
+        success: false,
+        direction: "none",
+        filesUploaded: 0,
+        filesDownloaded: 0,
+        durationMs: 0,
+        error,
+      };
+    }
+  },
+
+  syncSimple: async (backend: ISyncBackend) => {
+    const state = get();
+    if (state.status !== "idle") return null;
+
+    set({ status: "syncing-files", error: null, progress: null });
+
+    try {
+      const { runSimpleSync } = await import("../sync/simple-sync");
+
+      const result = await runSimpleSync(backend, (message) => {
+        set({
+          progress: {
+            phase: "database",
+            operation: "upload",
+            completedFiles: 0,
+            totalFiles: 1,
+            message,
+          },
+        });
+      });
+
+      set({
+        status: "idle",
+        lastSyncAt: Date.now(),
+        error: result.error || null,
+        progress: null,
+      });
+
+      return {
+        success: result.success,
+        direction: "upload" as const,
+        filesUploaded: result.changes,
+        filesDownloaded: 0,
+        durationMs: 0,
+        error: result.error,
+      };
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      set({ status: "error", error, progress: null });
+      return {
+        success: false,
+        direction: "none" as const,
+        filesUploaded: 0,
+        filesDownloaded: 0,
+        durationMs: 0,
+        error,
+      };
     }
   },
 

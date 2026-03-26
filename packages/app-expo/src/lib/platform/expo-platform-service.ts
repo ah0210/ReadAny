@@ -19,7 +19,6 @@ import type {
 } from "@readany/core/services";
 import * as Clipboard from "expo-clipboard";
 import Constants from "expo-constants";
-import * as Crypto from "expo-crypto";
 import * as DocumentPicker from "expo-document-picker";
 import { Directory, File, Paths } from "expo-file-system";
 import * as Network from "expo-network";
@@ -180,6 +179,7 @@ export class ExpoPlatformService implements IPlatformService {
 
       xhr.open(method, url, true);
       xhr.responseType = "arraybuffer";
+      xhr.timeout = 120000; // 2 minute timeout for large file downloads
 
       // Set headers
       if (options?.headers) {
@@ -190,21 +190,44 @@ export class ExpoPlatformService implements IPlatformService {
       }
 
       xhr.onload = () => {
-        const buffer = xhr.response as ArrayBuffer;
-        const decoder = new TextDecoder();
+        try {
+          const buffer = xhr.response as ArrayBuffer;
 
-        // Create a Response-like object
-        const response = {
-          status: xhr.status,
-          statusText: xhr.statusText,
-          ok: xhr.status >= 200 && xhr.status < 300,
-          headers: new Headers(),
-          text: async () => decoder.decode(buffer),
-          json: async () => JSON.parse(decoder.decode(buffer)),
-          arrayBuffer: async () => buffer,
-        } as Response;
+          // Create a Response-like object
+          const response = {
+            status: xhr.status,
+            statusText: xhr.statusText,
+            ok: xhr.status >= 200 && xhr.status < 300,
+            headers: new Headers(),
+            text: async () => {
+              // Use chunked decoding for large buffers to avoid string length limits
+              const CHUNK_SIZE = 65536; // 64KB chunks
+              if (buffer.byteLength <= CHUNK_SIZE) {
+                return new TextDecoder().decode(buffer);
+              }
+              const chunks: string[] = [];
+              const decoder = new TextDecoder();
+              let offset = 0;
+              while (offset < buffer.byteLength) {
+                const end = Math.min(offset + CHUNK_SIZE, buffer.byteLength);
+                chunks.push(
+                  decoder.decode(buffer.slice(offset, end), { stream: end < buffer.byteLength }),
+                );
+                offset = end;
+              }
+              return chunks.join("");
+            },
+            json: async () => {
+              const text = await response.text();
+              return JSON.parse(text);
+            },
+            arrayBuffer: async () => buffer,
+          } as Response;
 
-        resolve(response);
+          resolve(response);
+        } catch (error) {
+          reject(new Error(`Failed to process XHR response for ${method} ${url}: ${error}`));
+        }
       };
 
       xhr.onerror = () => {
@@ -212,7 +235,7 @@ export class ExpoPlatformService implements IPlatformService {
       };
 
       xhr.ontimeout = () => {
-        reject(new Error(`XHR request timeout: ${method} ${url}`));
+        reject(new Error(`XHR request timeout (120s): ${method} ${url}`));
       };
 
       // Send request
@@ -381,9 +404,12 @@ export class ExpoPlatformService implements IPlatformService {
       headers: Record<string, string>,
     ) => Promise<{ status: number; body?: Uint8Array; headers?: Record<string, string> }>,
   ): Promise<{ port: number; server: unknown }> {
-    const isExpoGo = Constants.executionEnvironment === "storeClient" || Constants.appOwnership === "expo";
+    const isExpoGo =
+      Constants.executionEnvironment === "storeClient" || Constants.appOwnership === "expo";
     if (isExpoGo) {
-      throw new Error("由于需要底层原生 TCP 模块，局域网服务端不支持在原味 Expo Go 中运行。请使用自定义 Dev Client (expo run) 或桌面版进行互传。");
+      throw new Error(
+        "由于需要底层原生 TCP 模块，局域网服务端不支持在原味 Expo Go 中运行。请使用自定义 Dev Client (expo run) 或桌面版进行互传。",
+      );
     }
 
     let TcpSocket: any;
@@ -409,7 +435,7 @@ export class ExpoPlatformService implements IPlatformService {
             if (lines.length === 0) return;
 
             const [method, path] = lines[0].split(" ");
-            
+
             const reqHeaders: Record<string, string> = {};
             for (let i = 1; i < lines.length; i++) {
               const line = lines[i];
@@ -425,7 +451,7 @@ export class ExpoPlatformService implements IPlatformService {
 
             try {
               const response = await handler(method, path, reqHeaders);
-              
+
               let resHead = `HTTP/1.1 ${response.status} OK\r\n`;
               if (response.headers) {
                 for (const [k, v] of Object.entries(response.headers)) {
@@ -433,7 +459,7 @@ export class ExpoPlatformService implements IPlatformService {
                 }
               }
               resHead += "Connection: close\r\n\r\n";
-              
+
               socket.write(resHead);
               if (response.body) {
                 socket.write(BufferMod.from(response.body));

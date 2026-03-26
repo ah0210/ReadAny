@@ -374,7 +374,9 @@ export async function initDatabase(): Promise<void> {
   const tablesNeedingUpdatedAt = ["bookmarks", "reading_sessions"];
   for (const table of tablesNeedingUpdatedAt) {
     try {
-      await database.execute(`ALTER TABLE ${table} ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0`);
+      await database.execute(
+        `ALTER TABLE ${table} ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0`,
+      );
     } catch {
       // Column already exists
     }
@@ -386,7 +388,9 @@ export async function initDatabase(): Promise<void> {
     // Already updated or column doesn't exist
   }
   try {
-    await database.execute("UPDATE reading_sessions SET updated_at = started_at WHERE updated_at = 0");
+    await database.execute(
+      "UPDATE reading_sessions SET updated_at = started_at WHERE updated_at = 0",
+    );
   } catch {
     // Already updated or column doesn't exist
   }
@@ -450,6 +454,7 @@ interface BookRow {
   vectorize_progress: number;
   tags: string;
   file_hash: string | null;
+  sync_status: string;
 }
 
 function rowToBook(row: BookRow): Book {
@@ -479,6 +484,7 @@ function rowToBook(row: BookRow): Book {
     vectorizeProgress: row.vectorize_progress,
     tags: parseJSON(row.tags, []),
     fileHash: row.file_hash || undefined,
+    syncStatus: (row.sync_status as Book["syncStatus"]) || "local",
   };
 }
 
@@ -502,8 +508,8 @@ export async function insertBook(book: Book): Promise<void> {
   const syncVersion = await nextSyncVersion(database, "books");
   const now = Date.now();
   await database.execute(
-    `INSERT INTO books (id, file_path, format, title, author, publisher, language, isbn, description, cover_url, publish_date, subjects, total_pages, total_chapters, added_at, last_opened_at, updated_at, progress, current_cfi, is_vectorized, vectorize_progress, tags, file_hash, sync_version, last_modified_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO books (id, file_path, format, title, author, publisher, language, isbn, description, cover_url, publish_date, subjects, total_pages, total_chapters, added_at, last_opened_at, updated_at, progress, current_cfi, is_vectorized, vectorize_progress, tags, file_hash, sync_status, sync_version, last_modified_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       book.id,
       book.filePath,
@@ -528,6 +534,7 @@ export async function insertBook(book: Book): Promise<void> {
       book.vectorizeProgress,
       JSON.stringify(book.tags),
       book.fileHash || null,
+      book.syncStatus || "local",
       syncVersion,
       deviceId,
     ],
@@ -602,6 +609,10 @@ export async function updateBook(id: string, updates: Partial<Book>): Promise<vo
   if (updates.fileHash !== undefined) {
     sets.push("file_hash = ?");
     values.push(updates.fileHash);
+  }
+  if (updates.syncStatus !== undefined) {
+    sets.push("sync_status = ?");
+    values.push(updates.syncStatus);
   }
 
   if (sets.length === 0) return;

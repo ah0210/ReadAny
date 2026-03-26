@@ -8,9 +8,9 @@ import type { ISyncBackend } from "./sync-backend";
 import {
   REMOTE_DATA,
   REMOTE_MANIFEST,
+  type RemoteSyncManifest,
   SYNC_META_KEYS,
   SYNC_SCHEMA_VERSION,
-  type RemoteSyncManifest,
 } from "./sync-types";
 
 /** Path for the latest delta file on remote */
@@ -52,10 +52,11 @@ const SYNC_TABLES = [
   { name: "bookmarks", pk: "id", timestampCol: "updated_at" },
   { name: "highlights", pk: "id", timestampCol: "updated_at" },
   { name: "notes", pk: "id", timestampCol: "updated_at" },
-  { name: "reading_sessions", pk: "id", timestampCol: "updated_at" },
   { name: "threads", pk: "id", timestampCol: "updated_at" },
   { name: "messages", pk: "id", timestampCol: "created_at" },
   { name: "skills", pk: "id", timestampCol: "updated_at" },
+  // NOT synced: chunks (large vector data, regenerated locally)
+  // NOT synced: reading_sessions (temporary data)
 ] as const;
 
 /** Max age for tombstone records (30 days) */
@@ -64,40 +65,38 @@ const TOMBSTONE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 /** Get or create device ID */
 export async function getDeviceId(): Promise<string> {
   const db = await getDB();
-  let rows = await db.select<{ value: string }>(
-    "SELECT value FROM sync_metadata WHERE key = ?",
-    [SYNC_META_KEYS.DEVICE_ID]
-  );
+  const rows = await db.select<{ value: string }>("SELECT value FROM sync_metadata WHERE key = ?", [
+    SYNC_META_KEYS.DEVICE_ID,
+  ]);
 
   if (rows[0]?.value) {
     return rows[0].value;
   }
 
   const deviceId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-  await db.execute(
-    "INSERT OR REPLACE INTO sync_metadata (key, value) VALUES (?, ?)",
-    [SYNC_META_KEYS.DEVICE_ID, deviceId]
-  );
+  await db.execute("INSERT OR REPLACE INTO sync_metadata (key, value) VALUES (?, ?)", [
+    SYNC_META_KEYS.DEVICE_ID,
+    deviceId,
+  ]);
   return deviceId;
 }
 
 /** Get last sync timestamp for this device */
 export async function getLastSyncTimestamp(): Promise<number> {
   const db = await getDB();
-  const rows = await db.select<{ value: string }>(
-    "SELECT value FROM sync_metadata WHERE key = ?",
-    [SYNC_META_KEYS.LAST_SYNC_AT]
-  );
-  return rows[0]?.value ? parseInt(rows[0].value, 10) : 0;
+  const rows = await db.select<{ value: string }>("SELECT value FROM sync_metadata WHERE key = ?", [
+    SYNC_META_KEYS.LAST_SYNC_AT,
+  ]);
+  return rows[0]?.value ? Number.parseInt(rows[0].value, 10) : 0;
 }
 
 /** Set last sync timestamp */
 export async function setLastSyncTimestamp(timestamp: number): Promise<void> {
   const db = await getDB();
-  await db.execute(
-    "INSERT OR REPLACE INTO sync_metadata (key, value) VALUES (?, ?)",
-    [SYNC_META_KEYS.LAST_SYNC_AT, String(timestamp)]
-  );
+  await db.execute("INSERT OR REPLACE INTO sync_metadata (key, value) VALUES (?, ?)", [
+    SYNC_META_KEYS.LAST_SYNC_AT,
+    String(timestamp),
+  ]);
 }
 
 /** Collect local changes since given timestamp, including tombstones for deletions */
@@ -117,7 +116,7 @@ export async function collectLocalChanges(since: number): Promise<SyncDelta> {
   for (const { name, timestampCol } of SYNC_TABLES) {
     const rows = await db.select<Record<string, unknown>>(
       `SELECT * FROM ${name} WHERE ${timestampCol} > ?`,
-      [since]
+      [since],
     );
 
     // Query tombstones for this table
@@ -125,9 +124,9 @@ export async function collectLocalChanges(since: number): Promise<SyncDelta> {
     try {
       const tombstones = await db.select<{ id: string }>(
         "SELECT id FROM sync_tombstones WHERE table_name = ? AND deleted_at > ?",
-        [name, since]
+        [name, since],
       );
-      deletedIds = tombstones.map(t => t.id);
+      deletedIds = tombstones.map((t) => t.id);
     } catch {
       // sync_tombstones table might not exist on older schema
     }
@@ -161,10 +160,11 @@ export async function applyRemoteDelta(delta: SyncDelta): Promise<{
 
     for (const tableName of Object.keys(delta.tables) as (keyof typeof delta.tables)[]) {
       const tableDelta = delta.tables[tableName];
-      if (!tableDelta || (tableDelta.records.length === 0 && tableDelta.deletedIds.length === 0)) continue;
+      if (!tableDelta || (tableDelta.records.length === 0 && tableDelta.deletedIds.length === 0))
+        continue;
 
       const { table, records } = tableDelta;
-      const tableInfo = SYNC_TABLES.find(t => t.name === table);
+      const tableInfo = SYNC_TABLES.find((t) => t.name === table);
       if (!tableInfo) continue;
 
       const { pk, timestampCol } = tableInfo;
@@ -175,7 +175,7 @@ export async function applyRemoteDelta(delta: SyncDelta): Promise<{
 
         const existing = await db.select<Record<string, unknown>>(
           `SELECT ${timestampCol} FROM ${table} WHERE ${pk} = ?`,
-          [pkValue]
+          [pkValue],
         );
 
         if (existing.length > 0) {
@@ -198,10 +198,10 @@ export async function applyRemoteDelta(delta: SyncDelta): Promise<{
       }
     }
 
-    await db.execute(
-      "INSERT OR REPLACE INTO sync_metadata (key, value) VALUES (?, ?)",
-      [SYNC_META_KEYS.LAST_SYNC_AT, String(Date.now())]
-    );
+    await db.execute("INSERT OR REPLACE INTO sync_metadata (key, value) VALUES (?, ?)", [
+      SYNC_META_KEYS.LAST_SYNC_AT,
+      String(Date.now()),
+    ]);
 
     await db.execute("COMMIT", []);
     inTransaction = false;
@@ -224,14 +224,14 @@ async function upsertRecord(
   db: Awaited<ReturnType<typeof getDB>>,
   table: string,
   record: Record<string, unknown>,
-  pk: string
+  pk: string,
 ): Promise<void> {
   const columns = Object.keys(record);
   const values = Object.values(record);
   const placeholders = columns.map(() => "?").join(", ");
   const updateSet = columns
-    .filter(c => c !== pk)
-    .map(c => `${c} = excluded.${c}`)
+    .filter((c) => c !== pk)
+    .map((c) => `${c} = excluded.${c}`)
     .join(", ");
 
   const sql = `
@@ -260,7 +260,11 @@ async function cleanupOldDeltaFiles(backend: ISyncBackend): Promise<void> {
     const files = await backend.listDir(REMOTE_DATA);
     for (const file of files) {
       // Delete old-format delta files: delta_{deviceId}_{timestamp}.json
-      if (file.name.startsWith("delta_") && file.name !== "delta_latest.json" && file.name.endsWith(".json")) {
+      if (
+        file.name.startsWith("delta_") &&
+        file.name !== "delta_latest.json" &&
+        file.name.endsWith(".json")
+      ) {
         try {
           await backend.delete(`${REMOTE_DATA}/${file.name}`);
         } catch {
@@ -277,7 +281,7 @@ async function cleanupOldDeltaFiles(backend: ISyncBackend): Promise<void> {
 function countDeltaChanges(delta: SyncDelta): number {
   return Object.values(delta.tables).reduce(
     (sum, t) => sum + (t?.records.length || 0) + (t?.deletedIds.length || 0),
-    0
+    0,
   );
 }
 
@@ -285,7 +289,7 @@ function countDeltaChanges(delta: SyncDelta): number {
 export async function runIncrementalSync(
   backend: ISyncBackend,
   direction: "upload" | "download",
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
 ): Promise<{ success: boolean; changes: number; error?: string; needsFullSync?: boolean }> {
   try {
     await ensureNoTransaction();
@@ -295,6 +299,8 @@ export async function runIncrementalSync(
 
     if (direction === "upload") {
       onProgress?.("Collecting local changes...");
+
+      // For first upload (lastSync = 0), collect all records as changes
       const delta = await collectLocalChanges(lastSync);
 
       const totalChanges = countDeltaChanges(delta);
@@ -331,12 +337,7 @@ export async function runIncrementalSync(
 
       const remoteManifest = await backend.getJSON<IncrementalSyncManifest>(REMOTE_MANIFEST);
       if (!remoteManifest) {
-        onProgress?.("No remote data found, need full sync");
-        return { success: true, changes: 0, needsFullSync: true };
-      }
-
-      if (!remoteManifest.lastSyncAt) {
-        onProgress?.("Remote manifest has no sync timestamp, need full sync");
+        onProgress?.("No remote manifest found, need full sync");
         return { success: true, changes: 0, needsFullSync: true };
       }
 
@@ -344,6 +345,8 @@ export async function runIncrementalSync(
       const delta = await backend.getJSON<SyncDelta>(REMOTE_DELTA_LATEST);
 
       if (!delta) {
+        // No delta file exists yet - this is first sync on this device
+        // We need full sync to get initial data
         onProgress?.("No delta file found, need full sync");
         return { success: true, changes: 0, needsFullSync: true };
       }

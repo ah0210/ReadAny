@@ -60,6 +60,7 @@ export const REMOTE_ROOT = "/readany";
 export const REMOTE_DATA = "/readany/data";
 export const REMOTE_DB_FILE = "/readany/data/readany.db";
 export const REMOTE_MANIFEST = "/readany/data/manifest.json";
+export const REMOTE_DELTA_FILE = "/readany/data/delta_latest.json";
 export const REMOTE_FILES = "/readany/data/file";
 export const REMOTE_COVERS = "/readany/data/cover";
 
