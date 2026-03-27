@@ -160,18 +160,23 @@ export function useChapterTranslation(options: UseChapterTranslationOptions) {
   // ---- Auto-restore cached translations on section load -----------------------
   useEffect(() => {
     const key = `${bookId}_${sectionIndex}_${translationConfig.targetLang}`;
+    console.log("[ChapterTranslation] auto-restore check:", { ready, status: state.status, key, attempted: autoRestoreAttemptedRef.current });
     // Only attempt once per section+lang combo, and only when idle+ready
     if (!ready || state.status !== "idle" || autoRestoreAttemptedRef.current === key) return;
     autoRestoreAttemptedRef.current = key;
 
     let cancelled = false;
-    isChapterFullyCached(bookId, sectionIndex, translationConfig.targetLang).then((cached) => {
-      if (cached && !cancelled) {
-        startTranslation();
-      }
-    }).catch(() => {});
+    // Small delay to ensure DOM is fully stable after navigation
+    const timer = setTimeout(() => {
+      isChapterFullyCached(bookId, sectionIndex, translationConfig.targetLang).then((cached) => {
+        console.log("[ChapterTranslation] cache check result:", { cached, cancelled, key });
+        if (cached && !cancelled) {
+          startTranslation();
+        }
+      }).catch(() => {});
+    }, 300);
 
-    return () => { cancelled = true; };
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [ready, bookId, sectionIndex, translationConfig.targetLang, state.status, startTranslation]);
 
   return { state, startTranslation, cancelTranslation, toggleOriginalVisible, toggleTranslationVisible, reset };

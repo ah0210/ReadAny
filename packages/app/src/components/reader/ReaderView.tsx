@@ -249,12 +249,14 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
 
   // Track when foliate is ready to receive annotations
   const [foliateReady, setFoliateReady] = useState(false);
+  // Separate delayed ready for chapter translation (avoids DOM conflict with CFI navigation)
+  const [translationReady, setTranslationReady] = useState(false);
 
   // Chapter translation hook
   const chapterTranslation = useChapterTranslation({
     bookId,
     sectionIndex: currentSectionIndex,
-    ready: foliateReady,
+    ready: translationReady,
     getParagraphs: () => foliateRef.current?.getChapterParagraphs() ?? [],
     injectTranslations: (results) => foliateRef.current?.injectChapterTranslations(results),
     removeTranslations: () => foliateRef.current?.removeChapterTranslations(),
@@ -267,6 +269,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   useEffect(() => {
     renderedHighlightsRef.current.clear();
     setFoliateReady(false);
+    setTranslationReady(false);
   }, [bookId]);
 
   // Ref to track if we've already handled the initialCfi for this mount
@@ -527,6 +530,8 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     setIsLoading(false);
     // Mark foliate as ready to receive annotations
     setFoliateReady(true);
+    // Delay translation ready to avoid DOM conflict with CFI navigation
+    setTimeout(() => setTranslationReady(true), 500);
   }, []);
 
   // Handle section load (chapter change) - re-render all highlights
@@ -537,6 +542,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     (sectionIndex: number) => {
       // Reset chapter translation on section change
       setCurrentSectionIndex(sectionIndex);
+      setTranslationReady(false);
       chapterTranslation.reset();
 
       // Delay slightly to ensure foliate view is ready
