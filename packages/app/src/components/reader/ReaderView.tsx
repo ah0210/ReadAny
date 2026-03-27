@@ -518,8 +518,11 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
 
       // Throttled save to DB
       throttledSaveProgress(bookId, progress, cfi);
+
+      // Mark translation ready after first successful relocate (CFI navigation done)
+      if (!translationReady) setTranslationReady(true);
     },
-    [tabId, bookId, bookFormat, setProgress, setChapter, throttledSaveProgress],
+    [tabId, bookId, bookFormat, setProgress, setChapter, throttledSaveProgress, translationReady],
   );
 
   const handleTocReady = useCallback((toc: TOCItem[]) => {
@@ -530,8 +533,6 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     setIsLoading(false);
     // Mark foliate as ready to receive annotations
     setFoliateReady(true);
-    // Delay translation ready to avoid DOM conflict with CFI navigation
-    setTimeout(() => setTranslationReady(true), 500);
   }, []);
 
   // Handle section load (chapter change) - re-render all highlights

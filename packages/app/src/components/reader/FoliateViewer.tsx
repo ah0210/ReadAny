@@ -459,7 +459,7 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
                   font-size: inherit;
                   line-height: inherit;
                   margin-top: 0;
-                  margin-bottom: 0;
+                  margin-bottom: 0.8em;
                   padding-left: 0;
                   border-left: none;
                   opacity: 1;
