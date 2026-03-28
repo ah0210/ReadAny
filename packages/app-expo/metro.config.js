@@ -74,11 +74,14 @@ const coreRedirects = {
   ),
 };
 
+// Stub path for ONNX runtime modules (mobile doesn't use local embedding)
+const onnxStubPath = path.resolve(projectRoot, "src/stubs/onnxruntime-stub.js");
+
 const originalResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
-  // Alias Transformers.js ONNX runtimes to react-native native module
+  // Redirect ONNX runtime modules to empty stub (mobile uses remote embedding APIs only)
   if (moduleName.startsWith("onnxruntime-node") || moduleName.startsWith("onnxruntime-web")) {
-    return context.resolveRequest(context, "onnxruntime-react-native", platform);
+    return { type: "sourceFile", filePath: onnxStubPath };
   }
 
   // Redirect Node built-in polyfills
