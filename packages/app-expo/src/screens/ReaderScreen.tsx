@@ -908,18 +908,14 @@ export function ReaderScreen({ route, navigation }: Props) {
   }, [ttsPlay, ttsSetOnEnd, ttsStop]);
 
   const handleToggleTTS = useCallback(async () => {
-    console.log("[ReaderScreen] handleToggleTTS called, showTTS:", showTTS);
     if (showTTS) {
       ttsContinuousRef.current = false;
       ttsSetOnEnd(null);
       ttsStop();
       setShowTTS(false);
     } else {
-      // Show TTS panel first
       setShowTTS(true);
-      // Then get visible text and start playing
       const text = await bridgeRef.current?.getVisibleText();
-      console.log("[ReaderScreen] getVisibleText result:", text ? `${text.length} chars` : "null");
       if (text) {
         ttsContinuousRef.current = true;
         ttsSetOnEnd(handleTTSPageEnd);
@@ -929,18 +925,11 @@ export function ReaderScreen({ route, navigation }: Props) {
   }, [showTTS, ttsPlay, ttsStop, ttsSetOnEnd, handleTTSPageEnd]);
 
   const handleTTSReplay = useCallback(async () => {
-    console.log("[ReaderScreen] handleTTSReplay called");
     const text = await bridgeRef.current?.getVisibleText();
-    console.log(
-      "[ReaderScreen] getVisibleText result:",
-      text ? `"${text.substring(0, 50)}..." (${text.length} chars)` : "empty",
-    );
     if (text && text.trim()) {
       ttsContinuousRef.current = true;
       ttsSetOnEnd(handleTTSPageEnd);
       ttsPlay(text);
-    } else {
-      console.log("[ReaderScreen] No visible text found for TTS");
     }
   }, [ttsPlay, ttsSetOnEnd, handleTTSPageEnd]);
 
