@@ -395,6 +395,15 @@ export async function initDatabase(): Promise<void> {
     // Already updated or column doesn't exist
   }
 
+  // Migration 9: Add sync_status to books for on-demand download
+  try {
+    await database.execute(
+      "ALTER TABLE books ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'local'",
+    );
+  } catch {
+    // Column already exists
+  }
+
   dbInitialized = true;
 }
 

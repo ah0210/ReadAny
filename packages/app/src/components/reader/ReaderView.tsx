@@ -260,6 +260,8 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     getParagraphs: () => foliateRef.current?.getChapterParagraphs() ?? [],
     injectTranslations: (results) => foliateRef.current?.injectChapterTranslations(results),
     removeTranslations: () => foliateRef.current?.removeChapterTranslations(),
+    applyVisibility: (originalVisible, translationVisible) =>
+      foliateRef.current?.applyChapterTranslationVisibility(originalVisible, translationVisible),
   });
 
   // Track which highlights have been rendered (id -> {cfi, note}) to detect changes
