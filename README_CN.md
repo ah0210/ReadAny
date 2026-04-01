@@ -195,16 +195,7 @@ pnpm expo:ios
 pnpm expo:android
 ```
 
-**Tauri Mobile 版本（实验性）：**
-```bash
-# 运行 iOS
-pnpm --filter @readany/app-mobile tauri ios dev
-
-# 运行 Android
-pnpm --filter @readany/app-mobile tauri android dev
-```
-
-设计详情见 [`MOBILE_UI_DESIGN.md`](packages/app-mobile/MOBILE_UI_DESIGN.md)。
+移动端源码位于 [`packages/app-expo`](packages/app-expo)。
 
 ### AI 配置
 

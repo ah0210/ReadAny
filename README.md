@@ -195,16 +195,7 @@ pnpm expo:ios
 pnpm expo:android
 ```
 
-**Tauri Mobile Version (Experimental):**
-```bash
-# Run iOS
-pnpm --filter @readany/app-mobile tauri ios dev
-
-# Run Android
-pnpm --filter @readany/app-mobile tauri android dev
-```
-
-See [`MOBILE_UI_DESIGN.md`](packages/app-mobile/MOBILE_UI_DESIGN.md) for design details.
+Mobile app source lives in [`packages/app-expo`](packages/app-expo).
 
 ### AI Configuration
 

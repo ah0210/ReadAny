@@ -10,6 +10,7 @@
  * Syncs version across:
  *   - packages/app/package.json
  *   - packages/app/src-tauri/tauri.conf.json
+ *   - packages/app/src-tauri/Cargo.toml
  *   - packages/app-expo/package.json
  *   - packages/app-expo/app.json (expo.version)
  */
@@ -36,6 +37,22 @@ const VERSION_FILES = [
       const json = JSON.parse(content);
       json.version = version;
       return JSON.stringify(json, null, 2) + "\n";
+    },
+  },
+  {
+    path: "packages/app/src-tauri/Cargo.toml",
+    read: (content) => {
+      const match = content.match(/^version = "([^"]+)"$/m);
+      if (!match) {
+        throw new Error("Could not find package version in Cargo.toml");
+      }
+      return match[1];
+    },
+    write: (content, version) => {
+      if (!/^version = "([^"]+)"$/m.test(content)) {
+        throw new Error("Could not find package version in Cargo.toml");
+      }
+      return content.replace(/^version = "[^"]+"$/m, `version = "${version}"`);
     },
   },
   {
