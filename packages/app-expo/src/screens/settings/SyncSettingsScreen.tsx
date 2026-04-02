@@ -79,6 +79,7 @@ export default function SyncSettingsScreen() {
     saveS3Config,
     syncNow,
     syncWithBackend,
+    forceFullSync,
     setAutoSync,
     resetSync,
   } = useSyncStore();
@@ -404,6 +405,31 @@ export default function SyncSettingsScreen() {
       },
     ]);
   }, [t, resetSync]);
+
+  const handleForceFullSync = useCallback(
+    (direction: "upload" | "download") => {
+      const isUpload = direction === "upload";
+      Alert.alert(
+        t(isUpload ? "settings.syncForceUpload" : "settings.syncForceDownload"),
+        t(
+          isUpload
+            ? "settings.syncForceUploadConfirm"
+            : "settings.syncForceDownloadConfirm",
+        ),
+        [
+          { text: t("common.cancel"), style: "cancel" },
+          {
+            text: t("common.confirm"),
+            style: "destructive",
+            onPress: () => {
+              void forceFullSync(direction);
+            },
+          },
+        ],
+      );
+    },
+    [forceFullSync, t],
+  );
 
   const formatLastSync = (ts: number | null) => {
     if (!ts) return t("settings.syncNever");
@@ -1089,6 +1115,28 @@ export default function SyncSettingsScreen() {
               </TouchableOpacity>
               {showAdvanced && (
                 <View style={styles.card}>
+                  <View style={styles.btnRow}>
+                    <TouchableOpacity
+                      style={[styles.uploadBtn, isBusy && styles.btnDisabled]}
+                      onPress={() => handleForceFullSync("upload")}
+                      disabled={isBusy}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.uploadBtnText}>{t("settings.syncForceUpload")}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.downloadBtn, isBusy && styles.btnDisabled]}
+                      onPress={() => handleForceFullSync("download")}
+                      disabled={isBusy}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.downloadBtnText}>
+                        {t("settings.syncForceDownload")}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.resetDesc}>{t("settings.syncForceUploadDesc")}</Text>
+                  <Text style={styles.resetDesc}>{t("settings.syncForceDownloadDesc")}</Text>
                   <TouchableOpacity
                     style={styles.resetBtn}
                     onPress={handleReset}

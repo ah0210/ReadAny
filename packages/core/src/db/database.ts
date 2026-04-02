@@ -22,10 +22,19 @@ const LOCAL_DB_NAME = "sqlite:readany_local.db";
 // Cached device ID for sync tracking
 let cachedDeviceId: string | null = null;
 
+async function configureDatabaseConnection(database: IDatabase): Promise<void> {
+  try {
+    await database.execute("PRAGMA busy_timeout = 5000");
+  } catch {
+    // Some adapters may not support PRAGMA configuration
+  }
+}
+
 export async function getDB(): Promise<IDatabase> {
   if (!db) {
     const platform = getPlatformService();
     db = await platform.loadDatabase(DB_NAME);
+    await configureDatabaseConnection(db);
   }
   return db;
 }
@@ -35,6 +44,7 @@ export async function getLocalDB(): Promise<IDatabase> {
   if (!localDb) {
     const platform = getPlatformService();
     localDb = await platform.loadDatabase(LOCAL_DB_NAME);
+    await configureDatabaseConnection(localDb);
   }
   return localDb;
 }
@@ -765,6 +775,14 @@ export async function updateBook(id: string, updates: Partial<Book>): Promise<vo
 
   values.push(id);
   await database.execute(`UPDATE books SET ${sets.join(", ")} WHERE id = ?`, values);
+}
+
+export async function setBookSyncStatus(
+  id: string,
+  syncStatus: Book["syncStatus"],
+): Promise<void> {
+  const database = await getDB();
+  await database.execute("UPDATE books SET sync_status = ? WHERE id = ?", [syncStatus, id]);
 }
 
 export async function deleteBook(id: string): Promise<void> {

@@ -42,6 +42,44 @@ function deviceSyncPath(deviceId: string): string {
   return `${SYNC_DIR}/device-${deviceId}.json`;
 }
 
+const DB_LOCK_MAX_RETRIES = 4;
+const DB_LOCK_RETRY_DELAY_MS = 300;
+
+function isDatabaseLockedError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("database is locked") || message.includes("(code: 5)");
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withDatabaseLockRetry<T>(
+  operation: () => Promise<T>,
+  label: string,
+): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= DB_LOCK_MAX_RETRIES; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (!isDatabaseLockedError(error) || attempt === DB_LOCK_MAX_RETRIES) {
+        throw error;
+      }
+
+      const delay = DB_LOCK_RETRY_DELAY_MS * attempt;
+      console.warn(
+        `[SimpleSync] ${label} hit a locked database, retrying (${attempt}/${DB_LOCK_MAX_RETRIES}) in ${delay}ms...`,
+      );
+      await sleep(delay);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
 export interface TableChangeset {
   records: Record<string, unknown>[];
   deletedIds: string[];
@@ -159,69 +197,75 @@ export async function collectChanges(since: number): Promise<DeviceSyncPayload> 
 export async function applyChanges(
   payload: DeviceSyncPayload,
 ): Promise<{ applied: number; skipped: number }> {
-  await ensureNoTransaction();
-  const db = await getDB();
-  let applied = 0;
-  let skipped = 0;
-  let inTransaction = false;
+  return withDatabaseLockRetry(async () => {
+    await ensureNoTransaction();
+    const db = await getDB();
+    let applied = 0;
+    let skipped = 0;
+    let inTransaction = false;
 
-  try {
-    await db.execute("BEGIN TRANSACTION", []);
-    inTransaction = true;
+    try {
+      await db.execute("BEGIN TRANSACTION", []);
+      inTransaction = true;
 
-    for (const [tableName, tableData] of Object.entries(payload.tables)) {
-      const tableInfo = SYNC_TABLES.find((t) => t.name === tableName);
-      if (!tableInfo) continue;
+      for (const [tableName, tableData] of Object.entries(payload.tables)) {
+        const tableInfo = SYNC_TABLES.find((t) => t.name === tableName);
+        if (!tableInfo) continue;
 
-      const { pk, timestampCol } = tableInfo;
-      const exclude = tableInfo.excludeColumns ?? [];
+        const { pk, timestampCol } = tableInfo;
+        const exclude = tableInfo.excludeColumns ?? [];
 
-      // Apply upserts (last-write-wins by timestamp)
-      for (const record of tableData.records) {
-        const pkValue = record[pk];
-        const remoteTs = record[timestampCol] as number;
+        // Apply upserts (last-write-wins by timestamp)
+        for (const record of tableData.records) {
+          const pkValue = record[pk];
+          const remoteTs = record[timestampCol] as number;
 
-        const existing = await db.select<Record<string, unknown>>(
-          `SELECT ${timestampCol} FROM ${tableName} WHERE ${pk} = ?`,
-          [pkValue],
-        );
+          const existing = await db.select<Record<string, unknown>>(
+            `SELECT ${timestampCol} FROM ${tableName} WHERE ${pk} = ?`,
+            [pkValue],
+          );
 
-        // Strip locally-owned columns before upserting
-        const safeRecord = exclude.length > 0
-          ? Object.fromEntries(Object.entries(record).filter(([k]) => !exclude.includes(k)))
-          : record;
+          // Strip locally-owned columns before upserting
+          const safeRecord = exclude.length > 0
+            ? Object.fromEntries(Object.entries(record).filter(([k]) => !exclude.includes(k)))
+            : record;
 
-        if (existing.length > 0) {
-          const localTs = existing[0][timestampCol] as number;
-          if (remoteTs > localTs) {
+          if (existing.length > 0) {
+            const localTs = existing[0][timestampCol] as number;
+            if (remoteTs > localTs) {
+              await upsertRecord(db, tableName, safeRecord, pk);
+              applied++;
+            } else {
+              skipped++;
+            }
+          } else {
             await upsertRecord(db, tableName, safeRecord, pk);
             applied++;
-          } else {
-            skipped++;
           }
-        } else {
-          await upsertRecord(db, tableName, safeRecord, pk);
+        }
+
+        // Apply deletions
+        for (const deletedId of tableData.deletedIds) {
+          await db.execute(`DELETE FROM ${tableName} WHERE ${pk} = ?`, [deletedId]);
           applied++;
         }
       }
 
-      // Apply deletions
-      for (const deletedId of tableData.deletedIds) {
-        await db.execute(`DELETE FROM ${tableName} WHERE ${pk} = ?`, [deletedId]);
-        applied++;
+      await db.execute("COMMIT", []);
+      inTransaction = false;
+    } catch (e) {
+      if (inTransaction) {
+        try {
+          await db.execute("ROLLBACK", []);
+        } catch {
+          // Ignore rollback errors
+        }
       }
+      throw e;
     }
 
-    await db.execute("COMMIT", []);
-    inTransaction = false;
-  } catch (e) {
-    if (inTransaction) {
-      try { await db.execute("ROLLBACK", []); } catch { /* ignore */ }
-    }
-    throw e;
-  }
-
-  return { applied, skipped };
+    return { applied, skipped };
+  }, "apply remote changes");
 }
 
 async function upsertRecord(
@@ -282,7 +326,7 @@ export async function runSimpleSync(
     const now = Date.now();
 
     // 1. Ensure remote sync directory exists
-    onProgress?.("检查远程目录...");
+    onProgress?.({ phase: "database", operation: "upload", message: "检查远程目录..." });
     try {
       await backend.ensureDirectories();
     } catch (e) {
