@@ -124,6 +124,7 @@ export default function SyncSettingsScreen() {
   const [syncIntervalInput, setSyncIntervalInput] = useState("30");
 
   const isBusy = status !== "idle" && status !== "error";
+  const isLanContext = selectedBackend === "lan" || backendType === "lan";
 
   // Pulse animation for indeterminate progress (database phase)
   const pulseAnim = useRef(new Animated.Value(0.4)).current;
@@ -326,25 +327,38 @@ export default function SyncSettingsScreen() {
       return;
     }
     setLanError("");
-    setLanConnectionState("connecting");
-    try {
-      const serverUrl = `http://${lanManualIP}:${lanManualPort}`;
-      const deviceName = Constants.deviceName || "Mobile";
-      const backend = createLANBackend(serverUrl, lanManualPairCode, deviceName);
-      const connected = await backend.testConnection();
-      if (!connected) {
-        throw new Error(t("settings.syncLANConnectionFailed"));
-      }
-      setLanConnectionState("connected");
-      // Use syncWithBackend to pass the LAN backend directly into the sync engine
-      const result = await syncWithBackend(backend);
-      if (result && !result.success) {
-        setLanError(result.error || t("settings.syncLANConnectionFailed"));
-      }
-    } catch (e) {
-      setLanError(e instanceof Error ? e.message : String(e));
-      setLanConnectionState("error");
-    }
+    Alert.alert(
+      t("settings.syncLANImportWarningTitle"),
+      t("settings.syncLANImportWarning"),
+      [
+        { text: t("common.cancel"), style: "cancel" },
+        {
+          text: t("common.confirm"),
+          style: "destructive",
+          onPress: async () => {
+            setLanConnectionState("connecting");
+            try {
+              const serverUrl = `http://${lanManualIP}:${lanManualPort}`;
+              const deviceName = Constants.deviceName || "Mobile";
+              const backend = createLANBackend(serverUrl, lanManualPairCode, deviceName);
+              const connected = await backend.testConnection();
+              if (!connected) {
+                throw new Error(t("settings.syncLANConnectionFailed"));
+              }
+              setLanConnectionState("connected");
+              // LAN is a one-off import flow: pull the server snapshot and related files.
+              const result = await syncWithBackend(backend);
+              if (result && !result.success) {
+                setLanError(result.error || t("settings.syncLANConnectionFailed"));
+              }
+            } catch (e) {
+              setLanError(e instanceof Error ? e.message : String(e));
+              setLanConnectionState("error");
+            }
+          },
+        },
+      ],
+    );
   }, [lanManualIP, lanManualPort, lanManualPairCode, syncWithBackend, t]);
 
   const handleScanQRCode = useCallback(async () => {
@@ -368,19 +382,30 @@ export default function SyncSettingsScreen() {
         setLanManualIP(qrData.ip);
         setLanManualPort(qrData.port.toString());
         setLanManualPairCode(qrData.pairCode);
-
-        // Auto-connect after 500ms
-        setTimeout(() => {
-          const url = `http://${qrData.ip}:${qrData.port}`;
-          const deviceName = Constants.deviceName || "Mobile";
-          const backend = createLANBackend(url, qrData.pairCode, deviceName);
-          setLanConnectionState("connecting");
-          setLanError("");
-          syncWithBackend(backend).catch((err) => {
-            setLanConnectionState("error");
-            setLanError(String(err));
-          });
-        }, 500);
+        Alert.alert(
+          t("settings.syncLANImportWarningTitle"),
+          t("settings.syncLANImportWarning"),
+          [
+            { text: t("common.cancel"), style: "cancel" },
+            {
+              text: t("common.confirm"),
+              style: "destructive",
+              onPress: () => {
+                setTimeout(() => {
+                  const url = `http://${qrData.ip}:${qrData.port}`;
+                  const deviceName = Constants.deviceName || "Mobile";
+                  const backend = createLANBackend(url, qrData.pairCode, deviceName);
+                  setLanConnectionState("connecting");
+                  setLanError("");
+                  syncWithBackend(backend).catch((err) => {
+                    setLanConnectionState("error");
+                    setLanError(String(err));
+                  });
+                }, 500);
+              },
+            },
+          ],
+        );
       } else {
         setLanError(t("settings.syncLANInvalidQR"));
       }
@@ -441,6 +466,21 @@ export default function SyncSettingsScreen() {
   };
 
   const statusLabel = () => {
+    if (isLanContext) {
+      switch (status) {
+        case "checking":
+          return t("settings.syncLANPreparingImport");
+        case "downloading":
+          return t("settings.syncLANImporting");
+        case "syncing-files":
+          return t("settings.syncLANImportingFiles");
+        case "error":
+          return t("settings.syncError");
+        default:
+          return null;
+      }
+    }
+
     switch (status) {
       case "checking":
         return t("settings.syncChecking");
@@ -458,6 +498,36 @@ export default function SyncSettingsScreen() {
   };
 
   const autoSyncEnabled = hasAutoSync(config) ? config.autoSync : false;
+  const showScheduledSyncSettings = hasAutoSync(config);
+
+  const progressLabel = () => {
+    if (!progress) return null;
+
+    if (isLanContext) {
+      return progress.phase === "database"
+        ? t("settings.syncLANImportProgressDatabase")
+        : t("settings.syncLANImportProgressFiles", {
+            completed: progress.completedFiles,
+            total: progress.totalFiles,
+          });
+    }
+
+    return progress.phase === "database"
+      ? t("settings.syncProgressDatabase", {
+          operation:
+            progress.operation === "upload"
+              ? t("settings.syncUploading")
+              : t("settings.syncDownloading"),
+        })
+      : t("settings.syncProgressFiles", {
+          operation:
+            progress.operation === "upload"
+              ? t("settings.syncUploading")
+              : t("settings.syncDownloading"),
+          completed: progress.completedFiles,
+          total: progress.totalFiles,
+        });
+  };
 
   const handleSyncIntervalBlur = useCallback(async () => {
     const parsed = Number.parseInt(syncIntervalInput, 10);
@@ -953,21 +1023,7 @@ export default function SyncSettingsScreen() {
                           )}
                         </View>
                         <Text style={styles.progressText}>
-                          {progress.message || (progress.phase === "database"
-                            ? t("settings.syncProgressDatabase", {
-                                operation:
-                                  progress.operation === "upload"
-                                    ? t("settings.syncUploading")
-                                    : t("settings.syncDownloading"),
-                              })
-                            : t("settings.syncProgressFiles", {
-                                operation:
-                                  progress.operation === "upload"
-                                    ? t("settings.syncUploading")
-                                    : t("settings.syncDownloading"),
-                                completed: progress.completedFiles,
-                                total: progress.totalFiles,
-                              }))}
+                          {progress.message || progressLabel()}
                         </Text>
                       </View>
                     )}
@@ -1004,13 +1060,17 @@ export default function SyncSettingsScreen() {
           )}
 
           {/* Sync Status */}
-          {(isConfigured || isBusy || lastSyncAt) && (
+          {selectedBackend !== "lan" && (isConfigured || isBusy || lastSyncAt) && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>{t("settings.syncStatus")}</Text>
+              <Text style={styles.sectionTitle}>
+                {isLanContext ? t("settings.syncLANImportStatus") : t("settings.syncStatus")}
+              </Text>
               <View style={styles.card}>
                 <View style={styles.syncRow}>
                   <View>
-                    <Text style={styles.syncLabel}>{t("settings.syncLastSync")}</Text>
+                    <Text style={styles.syncLabel}>
+                      {isLanContext ? t("settings.syncLANLastImport") : t("settings.syncLastSync")}
+                    </Text>
                     <Text style={styles.syncValue}>{formatLastSync(lastSyncAt)}</Text>
                     {statusLabel() && <Text style={styles.statusText}>{statusLabel()}</Text>}
                     {/* Sync progress bar */}
@@ -1032,37 +1092,23 @@ export default function SyncSettingsScreen() {
                             />
                           )}
                         </View>
-                        <Text style={styles.progressText}>
-                          {progress.phase === "database"
-                            ? t("settings.syncProgressDatabase", {
-                                operation:
-                                  progress.operation === "upload"
-                                    ? t("settings.syncUploading")
-                                    : t("settings.syncDownloading"),
-                              })
-                            : t("settings.syncProgressFiles", {
-                                operation:
-                                  progress.operation === "upload"
-                                    ? t("settings.syncUploading")
-                                    : t("settings.syncDownloading"),
-                                completed: progress.completedFiles,
-                                total: progress.totalFiles,
-                              })}
-                        </Text>
+                        <Text style={styles.progressText}>{progressLabel()}</Text>
                       </View>
                     )}
                   </View>
-                  <TouchableOpacity
-                    style={[styles.syncBtn, isBusy && styles.btnDisabled]}
-                    onPress={handleSync}
-                    disabled={isBusy}
-                    activeOpacity={0.7}
-                  >
-                    {isBusy && <ActivityIndicator size="small" color={colors.primaryForeground} />}
-                    <Text style={styles.syncBtnText}>
-                      {isBusy ? t("settings.syncSyncing") : t("settings.syncNow")}
-                    </Text>
-                  </TouchableOpacity>
+                  {!isLanContext && (
+                    <TouchableOpacity
+                      style={[styles.syncBtn, isBusy && styles.btnDisabled]}
+                      onPress={handleSync}
+                      disabled={isBusy}
+                      activeOpacity={0.7}
+                    >
+                      {isBusy && <ActivityIndicator size="small" color={colors.primaryForeground} />}
+                      <Text style={styles.syncBtnText}>
+                        {isBusy ? t("settings.syncSyncing") : t("settings.syncNow")}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
 
                 {/* Last result */}
@@ -1071,7 +1117,9 @@ export default function SyncSettingsScreen() {
                     {lastResult.success ? (
                       <>
                         <Text style={styles.resultText}>
-                          {t("settings.syncDirection", { direction: lastResult.direction })}
+                          {isLanContext
+                            ? t("settings.syncLANImportComplete")
+                            : t("settings.syncDirection", { direction: lastResult.direction })}
                         </Text>
                         {lastResult.filesUploaded > 0 && (
                           <Text style={styles.resultText}>
@@ -1080,7 +1128,9 @@ export default function SyncSettingsScreen() {
                         )}
                         {lastResult.filesDownloaded > 0 && (
                           <Text style={styles.resultText}>
-                            {t("settings.syncFilesDown", { count: lastResult.filesDownloaded })}
+                            {isLanContext
+                              ? t("settings.syncLANImportedFiles", { count: lastResult.filesDownloaded })
+                              : t("settings.syncFilesDown", { count: lastResult.filesDownloaded })}
                           </Text>
                         )}
                       </>
@@ -1095,48 +1145,51 @@ export default function SyncSettingsScreen() {
                 {/* Error */}
                 {error && !lastResult && <Text style={styles.errorText}>{error}</Text>}
 
-                {/* Auto sync toggle */}
-                <View style={styles.autoSyncRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.autoSyncLabel}>{t("settings.syncAutoSync")}</Text>
-                    <Text style={styles.autoSyncDesc}>{t("settings.syncAutoSyncDesc")}</Text>
-                  </View>
-                  <TouchableOpacity
-                    style={[styles.toggle, autoSyncEnabled && styles.toggleActive]}
-                    onPress={() => setAutoSync(!autoSyncEnabled)}
-                  >
-                    <View
-                      style={[styles.toggleThumb, autoSyncEnabled && styles.toggleThumbActive]}
-                    />
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.intervalRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.autoSyncLabel}>{t("settings.syncInterval")}</Text>
-                    <Text style={styles.autoSyncDesc}>{t("settings.syncIntervalDesc")}</Text>
-                  </View>
-                  <View style={styles.intervalInputWrap}>
-                    <TextInput
-                      style={styles.intervalInput}
-                      value={syncIntervalInput}
-                      onChangeText={setSyncIntervalInput}
-                      onBlur={() => void handleSyncIntervalBlur()}
-                      keyboardType="number-pad"
-                      returnKeyType="done"
-                    />
-                    <Text style={styles.intervalSuffix}>
-                      {t("settings.syncIntervalMinutes", {
-                        count: Number.parseInt(syncIntervalInput || "30", 10) || 30,
-                      })}
-                    </Text>
-                  </View>
-                </View>
+                {showScheduledSyncSettings && (
+                  <>
+                    <View style={styles.autoSyncRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.autoSyncLabel}>{t("settings.syncAutoSync")}</Text>
+                        <Text style={styles.autoSyncDesc}>{t("settings.syncAutoSyncDesc")}</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={[styles.toggle, autoSyncEnabled && styles.toggleActive]}
+                        onPress={() => setAutoSync(!autoSyncEnabled)}
+                      >
+                        <View
+                          style={[styles.toggleThumb, autoSyncEnabled && styles.toggleThumbActive]}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                    <View style={styles.intervalRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.autoSyncLabel}>{t("settings.syncInterval")}</Text>
+                        <Text style={styles.autoSyncDesc}>{t("settings.syncIntervalDesc")}</Text>
+                      </View>
+                      <View style={styles.intervalInputWrap}>
+                        <TextInput
+                          style={styles.intervalInput}
+                          value={syncIntervalInput}
+                          onChangeText={setSyncIntervalInput}
+                          onBlur={() => void handleSyncIntervalBlur()}
+                          keyboardType="number-pad"
+                          returnKeyType="done"
+                        />
+                        <Text style={styles.intervalSuffix}>
+                          {t("settings.syncIntervalMinutes", {
+                            count: Number.parseInt(syncIntervalInput || "30", 10) || 30,
+                          })}
+                        </Text>
+                      </View>
+                    </View>
+                  </>
+                )}
               </View>
             </View>
           )}
 
           {/* Advanced */}
-          {isConfigured && (
+          {isConfigured && selectedBackend !== "lan" && (
             <View style={styles.section}>
               <TouchableOpacity
                 style={styles.advancedHeader}

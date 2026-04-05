@@ -22,7 +22,7 @@ interface LANSyncDialogProps {
 
 export function LANSyncDialog({ open, onClose, mode }: LANSyncDialogProps) {
   const { t } = useTranslation();
-  const { syncNow, syncWithBackend } = useSyncStore();
+  const { syncWithBackend } = useSyncStore();
 
   // Server state
   const [serverStatus, setServerStatus] = useState<LANServerStatus>("idle");
@@ -40,6 +40,15 @@ export function LANSyncDialog({ open, onClose, mode }: LANSyncDialogProps) {
   const [manualServerIP, setManualServerIP] = useState("");
 
   const [error, setError] = useState("");
+
+  const confirmLanImport = useCallback(() => {
+    return window.confirm(
+      t(
+        "settings.syncLANImportWarning",
+        "This will overwrite this device's database, books, and covers with the server device data. Use it for migration, not two-way merge.",
+      ),
+    );
+  }, [t]);
 
   // Server mode: start/stop server
   const handleStartServer = useCallback(async () => {
@@ -138,22 +147,27 @@ export function LANSyncDialog({ open, onClose, mode }: LANSyncDialogProps) {
     try {
       const serverUrl = `http://${manualIP}:${manualPort}`;
       const backend = createLANBackend(serverUrl, manualPairCode, "Mobile");
-      
+
       const connected = await backend.testConnection();
       if (!connected) {
         throw new Error(t("settings.syncLANConnectionFailed"));
       }
 
+      if (!confirmLanImport()) {
+        setConnectionState("idle");
+        return;
+      }
+
       setConnectionState("connected");
 
-      // Start sync using the explicit backend
+      // LAN is a one-off import flow: pull the server snapshot and related files.
       await syncWithBackend(backend);
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setConnectionState("error");
     }
-  }, [manualIP, manualPort, manualPairCode, syncNow, onClose, t]);
+  }, [manualIP, manualPort, manualPairCode, confirmLanImport, onClose, syncWithBackend, t]);
 
   // Cleanup on close
   useEffect(() => {
@@ -211,7 +225,7 @@ export function LANSyncDialog({ open, onClose, mode }: LANSyncDialogProps) {
                     disabled={!manualServerIP}
                     className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
                   >
-                    {t("settings.syncLANServerStart")}
+                    启动服务
                   </button>
                 </div>
               </div>
@@ -262,16 +276,14 @@ export function LANSyncDialog({ open, onClose, mode }: LANSyncDialogProps) {
                     disabled={serverStatus === "starting"}
                     className="flex-1 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
                   >
-                    {serverStatus === "starting"
-                      ? t("settings.syncLANServerStarting")
-                      : t("settings.syncLANServerStart")}
+                    {serverStatus === "starting" ? "启动中..." : "启动服务"}
                   </button>
                 ) : (
                   <button
                     onClick={handleStopServer}
                     className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors hover:bg-muted"
                   >
-                    {t("settings.syncLANServerStop")}
+                    停止服务
                   </button>
                 )}
               </div>
@@ -279,14 +291,6 @@ export function LANSyncDialog({ open, onClose, mode }: LANSyncDialogProps) {
           </div>
         ) : (
           <div className="space-y-4">
-            {/* QR Scanner placeholder */}
-            <div className="rounded-lg bg-muted/60 p-4">
-              <p className="text-sm font-medium mb-2">{t("settings.syncLANScanQR")}</p>
-              <div className="h-32 bg-gray-100 rounded flex items-center justify-center text-xs text-gray-500">
-                {t("settings.syncLANScannerPlaceholder")}
-              </div>
-            </div>
-
             {/* Manual connection */}
             <div className="space-y-3">
               <p className="text-sm font-medium">{t("settings.syncLANManualConnect")}</p>

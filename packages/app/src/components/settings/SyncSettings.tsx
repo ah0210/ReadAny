@@ -99,6 +99,8 @@ export function SyncSettings() {
   }, [config]);
 
   const isBusy = status !== "idle" && status !== "error";
+  const isLanContext = selectedBackend === "lan" || backendType === "lan";
+  const showScheduledSyncSettings = config?.type === "webdav" || config?.type === "s3";
 
   const handleTestWebDav = useCallback(async () => {
     setTesting(true);
@@ -244,6 +246,21 @@ export function SyncSettings() {
   }, [setSyncIntervalMins, syncIntervalInput]);
 
   const statusLabel = () => {
+    if (isLanContext) {
+      switch (status) {
+        case "checking":
+          return t("settings.syncLANPreparingImport");
+        case "downloading":
+          return t("settings.syncLANImporting");
+        case "syncing-files":
+          return t("settings.syncLANImportingFiles");
+        case "error":
+          return t("settings.syncError");
+        default:
+          return null;
+      }
+    }
+
     switch (status) {
       case "checking":
         return t("settings.syncChecking");
@@ -258,6 +275,35 @@ export function SyncSettings() {
       default:
         return null;
     }
+  };
+
+  const progressLabel = () => {
+    if (!progress) return null;
+
+    if (isLanContext) {
+      return progress.phase === "database"
+        ? t("settings.syncLANImportProgressDatabase")
+        : t("settings.syncLANImportProgressFiles", {
+            completed: progress.completedFiles,
+            total: progress.totalFiles,
+          });
+    }
+
+    return progress.phase === "database"
+      ? t("settings.syncProgressDatabase", {
+          operation:
+            progress.operation === "upload"
+              ? t("settings.syncUploading")
+              : t("settings.syncDownloading"),
+        })
+      : t("settings.syncProgressFiles", {
+          operation:
+            progress.operation === "upload"
+              ? t("settings.syncUploading")
+              : t("settings.syncDownloading"),
+          completed: progress.completedFiles,
+          total: progress.totalFiles,
+        });
   };
 
   const renderBackendSelector = () => (
@@ -521,11 +567,15 @@ export function SyncSettings() {
 
   const renderSyncStatus = () => (
     <section className="rounded-lg bg-muted/60 p-4">
-      <h2 className="mb-4 text-sm font-medium text-foreground">{t("settings.syncStatus")}</h2>
+      <h2 className="mb-4 text-sm font-medium text-foreground">
+        {isLanContext ? t("settings.syncLANImportStatus") : t("settings.syncStatus")}
+      </h2>
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <span className="text-sm text-foreground">{t("settings.syncLastSync")}</span>
+            <span className="text-sm text-foreground">
+              {isLanContext ? t("settings.syncLANLastImport") : t("settings.syncLastSync")}
+            </span>
             <p className="mt-0.5 text-xs text-muted-foreground">{formatLastSync(lastSyncAt)}</p>
             {statusLabel() && <p className="mt-0.5 text-xs text-primary">{statusLabel()}</p>}
             {isBusy && progress && (
@@ -542,45 +592,39 @@ export function SyncSettings() {
                     />
                   )}
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {progress.phase === "database"
-                    ? t("settings.syncProgressDatabase", {
-                        operation:
-                          progress.operation === "upload"
-                            ? t("settings.syncUploading")
-                            : t("settings.syncDownloading"),
-                      })
-                    : t("settings.syncProgressFiles", {
-                        operation:
-                          progress.operation === "upload"
-                            ? t("settings.syncUploading")
-                            : t("settings.syncDownloading"),
-                        completed: progress.completedFiles,
-                        total: progress.totalFiles,
-                      })}
-                </p>
+                <p className="mt-1 text-xs text-muted-foreground">{progressLabel()}</p>
               </div>
             )}
           </div>
-          <button
-            onClick={handleSync}
-            disabled={isBusy || backendType === "lan"}
-            className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-          >
-            {isBusy ? t("settings.syncSyncing") : t("settings.syncNow")}
-          </button>
+          {!isLanContext && (
+            <button
+              onClick={handleSync}
+              disabled={isBusy}
+              className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+            >
+              {isBusy ? t("settings.syncSyncing") : t("settings.syncNow")}
+            </button>
+          )}
         </div>
 
         {lastResult && (
           <div className="rounded-md bg-background/60 p-3 text-xs text-muted-foreground">
             {lastResult.success ? (
               <div className="space-y-0.5">
-                <p>{t("settings.syncDirection", { direction: lastResult.direction })}</p>
+                <p>
+                  {isLanContext
+                    ? t("settings.syncLANImportComplete")
+                    : t("settings.syncDirection", { direction: lastResult.direction })}
+                </p>
                 {lastResult.filesUploaded > 0 && (
                   <p>{t("settings.syncFilesUp", { count: lastResult.filesUploaded })}</p>
                 )}
                 {lastResult.filesDownloaded > 0 && (
-                  <p>{t("settings.syncFilesDown", { count: lastResult.filesDownloaded })}</p>
+                  <p>
+                    {isLanContext
+                      ? t("settings.syncLANImportedFiles", { count: lastResult.filesDownloaded })
+                      : t("settings.syncFilesDown", { count: lastResult.filesDownloaded })}
+                  </p>
                 )}
                 <p className="text-muted-foreground/60">
                   {t("settings.syncDuration", { ms: lastResult.durationMs })}
@@ -600,40 +644,44 @@ export function SyncSettings() {
           </div>
         )}
 
-        <div className="flex items-center justify-between pt-1">
-          <div>
-            <span className="text-sm text-foreground">{t("settings.syncAutoSync")}</span>
-            <p className="mt-0.5 text-xs text-muted-foreground">{t("settings.syncAutoSyncDesc")}</p>
-          </div>
-          <Switch
-            checked={config?.type === "webdav" || config?.type === "s3" ? config.autoSync : false}
-            onCheckedChange={(checked) => setAutoSync(checked)}
-          />
-        </div>
-        <div className="flex items-center justify-between gap-3 border-t border-border/40 pt-3">
-          <div>
-            <span className="text-sm text-foreground">{t("settings.syncInterval")}</span>
-            <p className="mt-0.5 text-xs text-muted-foreground">{t("settings.syncIntervalDesc")}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              min={5}
-              max={720}
-              step={1}
-              value={syncIntervalInput}
-              onChange={(e) => setSyncIntervalInput(e.target.value)}
-              onBlur={() => void handleSyncIntervalBlur()}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.currentTarget.blur();
-                }
-              }}
-              className="w-20 rounded-md border border-input bg-background px-3 py-1.5 text-right text-sm text-foreground outline-none focus:border-primary"
-            />
-            <span className="text-xs text-muted-foreground">{t("settings.syncIntervalMinutes", { count: Number.parseInt(syncIntervalInput || "30", 10) || 30 })}</span>
-          </div>
-        </div>
+        {showScheduledSyncSettings && (
+          <>
+            <div className="flex items-center justify-between pt-1">
+              <div>
+                <span className="text-sm text-foreground">{t("settings.syncAutoSync")}</span>
+                <p className="mt-0.5 text-xs text-muted-foreground">{t("settings.syncAutoSyncDesc")}</p>
+              </div>
+              <Switch
+                checked={config?.type === "webdav" || config?.type === "s3" ? config.autoSync : false}
+                onCheckedChange={(checked) => setAutoSync(checked)}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-3 border-t border-border/40 pt-3">
+              <div>
+                <span className="text-sm text-foreground">{t("settings.syncInterval")}</span>
+                <p className="mt-0.5 text-xs text-muted-foreground">{t("settings.syncIntervalDesc")}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={5}
+                  max={720}
+                  step={1}
+                  value={syncIntervalInput}
+                  onChange={(e) => setSyncIntervalInput(e.target.value)}
+                  onBlur={() => void handleSyncIntervalBlur()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.currentTarget.blur();
+                    }
+                  }}
+                  className="w-20 rounded-md border border-input bg-background px-3 py-1.5 text-right text-sm text-foreground outline-none focus:border-primary"
+                />
+                <span className="text-xs text-muted-foreground">{t("settings.syncIntervalMinutes", { count: Number.parseInt(syncIntervalInput || "30", 10) || 30 })}</span>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </section>
   );
@@ -670,10 +718,10 @@ export function SyncSettings() {
         </section>
       )}
 
-      {isConfigured && backendType !== "lan" && renderSyncStatus()}
+      {selectedBackend !== "lan" && (isConfigured || isBusy || lastSyncAt) && renderSyncStatus()}
 
       {/* Advanced Section */}
-      {isConfigured && (
+      {isConfigured && selectedBackend !== "lan" && (
         <section className="rounded-lg bg-muted/60 p-4">
           <button
             onClick={() => setShowAdvanced(!showAdvanced)}

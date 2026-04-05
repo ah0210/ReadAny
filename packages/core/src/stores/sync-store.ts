@@ -405,6 +405,60 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
       try {
         await flushPendingReadingSession();
+        if (backend.type === "lan") {
+          const { runSync } = await import("../sync/sync-engine");
+          const remoteManifest = await backend
+            .getJSON<RemoteSyncManifest>(REMOTE_MANIFEST)
+            .catch(() => null);
+
+          const result = await runSync(
+            backend,
+            "download",
+            (progress) => {
+              set({
+                status: statusFromProgress(progress),
+                progress,
+              });
+            },
+            remoteManifest,
+            undefined,
+            false,
+            { forceDownloadAll: true, downloadRemoteBooks: true },
+          );
+
+          if (result.success) {
+            const syncedAt = Date.now();
+            set({
+              status: "idle",
+              lastSyncAt: syncedAt,
+              lastResult: result,
+              error: null,
+              progress: null,
+              pendingDirection: null,
+            });
+            notifyLibraryStateChanged();
+            notifySyncCompleted(syncedAt);
+            await persistSyncRuntimeState({
+              lastSyncAt: syncedAt,
+              lastResult: result,
+            });
+          } else {
+            set({
+              status: "error",
+              lastResult: result,
+              error: result.error || "同步失败",
+              progress: null,
+              pendingDirection: null,
+            });
+            await persistSyncRuntimeState({
+              lastSyncAt: get().lastSyncAt,
+              lastResult: result,
+            });
+          }
+
+          return result;
+        }
+
         const result = await get().syncSimple(backend);
         if (!result) {
           set({ status: "idle", progress: null, pendingDirection: null });

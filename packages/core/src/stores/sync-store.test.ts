@@ -20,6 +20,11 @@ const mockBackend = vi.hoisted(() => ({
   getJSON: vi.fn<() => Promise<unknown>>(),
 }));
 
+const mockLanBackend = vi.hoisted(() => ({
+  type: "lan" as const,
+  getJSON: vi.fn<() => Promise<unknown>>(),
+}));
+
 const factoryMocks = vi.hoisted(() => ({
   createSyncBackend: vi.fn(() => mockBackend),
   getSecretKeyForBackend: vi.fn((type: "webdav" | "s3") =>
@@ -102,6 +107,12 @@ describe("useSyncStore", () => {
     factoryMocks.createSyncBackend.mockReturnValue(mockBackend);
     mockBackend.testConnection.mockResolvedValue(true);
     mockBackend.getJSON.mockResolvedValue(null);
+    mockLanBackend.getJSON.mockResolvedValue({
+      lastModifiedAt: 123,
+      uploadedBy: "ReadAny Desktop",
+      appVersion: "1.0.0",
+      schemaVersion: 1,
+    });
     syncMocks.runSimpleSync.mockResolvedValue({
       success: true,
       filesUploaded: 2,
@@ -227,6 +238,53 @@ describe("useSyncStore", () => {
     expect(mockPlatformService.kvSetItem).toHaveBeenCalledWith(
       "sync_runtime_state",
       expect.any(String),
+    );
+  });
+
+  it("syncWithBackend uses full download flow for LAN import", async () => {
+    const emitSpy = vi.spyOn(eventBus, "emit");
+    syncMocks.runSync.mockResolvedValue({
+      success: true,
+      direction: "download",
+      filesUploaded: 0,
+      filesDownloaded: 4,
+      durationMs: 12,
+    });
+
+    const result = await useSyncStore
+      .getState()
+      .syncWithBackend(mockLanBackend as unknown as ISyncBackend);
+
+    expect(syncMocks.runSimpleSync).not.toHaveBeenCalled();
+    expect(syncMocks.runSync).toHaveBeenCalledWith(
+      mockLanBackend,
+      "download",
+      expect.any(Function),
+      expect.objectContaining({
+        lastModifiedAt: 123,
+      }),
+      undefined,
+      false,
+      {
+        forceDownloadAll: true,
+        downloadRemoteBooks: true,
+      },
+    );
+    expect(result).toMatchObject({
+      success: true,
+      direction: "download",
+      filesDownloaded: 4,
+    });
+    expect(useSyncStore.getState().status).toBe("idle");
+    expect(useSyncStore.getState().lastResult).toMatchObject({
+      success: true,
+      direction: "download",
+      filesDownloaded: 4,
+    });
+    expect(libraryEventMocks.emitLibraryChanged).toHaveBeenCalled();
+    expect(emitSpy).toHaveBeenCalledWith(
+      "sync:completed",
+      expect.objectContaining({ timestamp: expect.any(Number) }),
     );
   });
 
