@@ -16,12 +16,70 @@ let dbInitialized = false;
 let localDb: IDatabase | null = null;
 let localDbInitialized = false;
 
-const DB_NAME = "sqlite:readany.db";
-const LOCAL_DB_NAME = "sqlite:readany_local.db";
+const DB_FILENAME = "readany.db";
+const LOCAL_DB_FILENAME = "readany_local.db";
 const DEVICE_ID_STORAGE_KEY = "sync_device_id";
+const DESKTOP_DATA_ROOT_CONFIG_FILE = "desktop-data-root.json";
 
 // Cached device ID for sync tracking
 let cachedDeviceId: string | null = null;
+
+function normalizeDir(path: string): string {
+  const trimmed = path.replace(/^file:\/\//, "").trim();
+  if (!trimmed) return "";
+  if (/^[A-Za-z]:\\$/.test(trimmed)) return trimmed;
+  return trimmed.replace(/[\\/]+$/, "");
+}
+
+async function getDefaultDataRoot(): Promise<string> {
+  const platform = getPlatformService();
+  return normalizeDir(await platform.getAppDataDir());
+}
+
+async function getDesktopDataRootConfigPath(): Promise<string> {
+  const platform = getPlatformService();
+  return platform.joinPath(await getDefaultDataRoot(), DESKTOP_DATA_ROOT_CONFIG_FILE);
+}
+
+async function getDesktopDataRoot(): Promise<string> {
+  const platform = getPlatformService();
+  const defaultRoot = await getDefaultDataRoot();
+  if (!platform.isDesktop) {
+    return defaultRoot;
+  }
+
+  try {
+    const configPath = await getDesktopDataRootConfigPath();
+    if (!(await platform.exists(configPath))) {
+      return defaultRoot;
+    }
+
+    const raw = await platform.readTextFile(configPath);
+    const parsed = JSON.parse(raw) as { dataRoot?: string };
+    const configuredRoot = normalizeDir(parsed.dataRoot || "");
+    return configuredRoot || defaultRoot;
+  } catch {
+    return defaultRoot;
+  }
+}
+
+export async function getActiveDataRoot(): Promise<string> {
+  return getDesktopDataRoot();
+}
+
+export async function getDatabaseFilePath(filename: string): Promise<string> {
+  const platform = getPlatformService();
+  return platform.joinPath(await getDesktopDataRoot(), filename);
+}
+
+async function getDatabaseLocation(filename: string): Promise<string> {
+  const platform = getPlatformService();
+  if (!platform.isDesktop) {
+    return `sqlite:${filename}`;
+  }
+
+  return `sqlite:${await getDatabaseFilePath(filename)}`;
+}
 
 async function configureDatabaseConnection(database: IDatabase): Promise<void> {
   try {
@@ -60,7 +118,7 @@ export async function cleanupOrphanedSyncRows(databaseArg?: IDatabase): Promise<
 export async function getDB(): Promise<IDatabase> {
   if (!db) {
     const platform = getPlatformService();
-    db = await platform.loadDatabase(DB_NAME);
+    db = await platform.loadDatabase(await getDatabaseLocation(DB_FILENAME));
     await configureDatabaseConnection(db);
   }
   return db;
@@ -70,7 +128,7 @@ export async function getDB(): Promise<IDatabase> {
 export async function getLocalDB(): Promise<IDatabase> {
   if (!localDb) {
     const platform = getPlatformService();
-    localDb = await platform.loadDatabase(LOCAL_DB_NAME);
+    localDb = await platform.loadDatabase(await getDatabaseLocation(LOCAL_DB_FILENAME));
     await configureDatabaseConnection(localDb);
   }
   return localDb;

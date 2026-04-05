@@ -89,8 +89,11 @@ export function GeneralSettings() {
     }
   };
 
-  const reloadAfterMigration = () => {
-    window.setTimeout(() => window.location.reload(), 500);
+  const restartAfterMigration = async () => {
+    const { relaunch } = await import("@tauri-apps/plugin-process");
+    window.setTimeout(() => {
+      void relaunch();
+    }, 500);
   };
 
   const handleMigrateLibrary = async () => {
@@ -107,12 +110,14 @@ export function GeneralSettings() {
     setMigratingLibrary(true);
     try {
       const result = await migrateDesktopLibraryRoot(targetLibraryRoot);
+      setCurrentLibraryRoot(result.to);
+      setTargetLibraryRoot(result.to);
       toast.success(
         t("settings.storageMigrationSuccess", {
           count: result.movedFiles,
         }),
       );
-      reloadAfterMigration();
+      await restartAfterMigration();
     } catch (error) {
       console.error("[GeneralSettings] Failed to migrate library root:", error);
       toast.error(
@@ -135,12 +140,14 @@ export function GeneralSettings() {
     try {
       const result = await migrateDesktopLibraryRoot(defaultLibraryRoot);
       await clearDesktopLibraryRoot();
+      setCurrentLibraryRoot(defaultLibraryRoot);
+      setTargetLibraryRoot(defaultLibraryRoot);
       toast.success(
         t("settings.storageMigrationSuccess", {
           count: result.movedFiles,
         }),
       );
-      reloadAfterMigration();
+      await restartAfterMigration();
     } catch (error) {
       console.error("[GeneralSettings] Failed to reset library root:", error);
       toast.error(

@@ -7,6 +7,8 @@ export {
   closeLocalDB,
   resetDBCache,
   resetLocalDBCache,
+  getActiveDataRoot,
+  getDatabaseFilePath,
   getBooks,
   getBook,
   insertBook,

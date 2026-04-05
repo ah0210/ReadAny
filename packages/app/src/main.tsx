@@ -13,6 +13,7 @@ import { onLibraryChanged } from "@readany/core/events/library-events";
 import { setVectorDB } from "@readany/core/rag";
 import { setPlatformService } from "@readany/core/services";
 import { TauriPlatformService } from "./lib/platform/tauri-platform-service";
+import { syncLegacyDesktopLibraryRootConfig } from "./lib/storage/desktop-library-root";
 import { TauriVectorDB } from "./lib/tauri-vector-db";
 import { useLibraryStore } from "./stores/library-store";
 import { flushAllWrites } from "./stores/persist";
@@ -40,9 +41,12 @@ const tauriVectorDB = new TauriVectorDB();
 setVectorDB(tauriVectorDB);
 console.log("[VectorDB] TauriVectorDB reference set");
 
+const desktopDataRootReady = syncLegacyDesktopLibraryRootConfig().catch(console.error);
+
 // Align vector DB dimension with the currently selected model
 (async () => {
   try {
+    await desktopDataRootReady;
     const { vectorModelMode, selectedBuiltinModelId, getSelectedVectorModel } =
       useVectorModelStore.getState();
     let dimension: number | undefined;
@@ -66,6 +70,8 @@ console.log("[VectorDB] TauriVectorDB reference set");
 
 // Ensure i18n is fully initialized before rendering
 i18nReady.then(() => {
+  desktopDataRootReady.catch(console.error);
+
   // Restore saved theme from localStorage
   const savedTheme = localStorage.getItem("readany-theme");
   if (savedTheme && ["light", "dark", "sepia"].includes(savedTheme)) {
@@ -84,7 +90,9 @@ i18nReady.then(() => {
   });
 
   // Initialize database and load books
-  useLibraryStore.getState().loadBooks();
+  desktopDataRootReady.then(() => {
+    useLibraryStore.getState().loadBooks();
+  });
 
   // Refresh library store when AI tools modify books/tags
   onLibraryChanged((deletedTags) => useLibraryStore.getState().loadBooks(deletedTags));

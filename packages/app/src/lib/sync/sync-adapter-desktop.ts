@@ -1,5 +1,5 @@
 import { closeDB, initDatabase, resetDBCache, resetLocalDBCache } from "@readany/core/db";
-import { getDesktopLibraryRoot } from "@/lib/storage/desktop-library-root";
+import { getDesktopDatabasePath, getDesktopLibraryRoot } from "@/lib/storage/desktop-library-root";
 /**
  * Desktop (Tauri) sync adapter — implements ISyncAdapter
  * using Tauri invoke commands and @tauri-apps/plugin-fs.
@@ -7,7 +7,7 @@ import { getDesktopLibraryRoot } from "@/lib/storage/desktop-library-root";
 import type { ISyncAdapter } from "@readany/core/sync";
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
-import { appDataDir, join, tempDir } from "@tauri-apps/api/path";
+import { join, tempDir } from "@tauri-apps/api/path";
 import {
   copyFile,
   exists,
@@ -55,8 +55,7 @@ export class DesktopSyncAdapter implements ISyncAdapter {
   }
 
   async getDatabasePath(): Promise<string> {
-    const dir = await appDataDir();
-    return await join(dir, "readany.db");
+    return getDesktopDatabasePath("readany.db");
   }
 
   async getTempDir(): Promise<string> {

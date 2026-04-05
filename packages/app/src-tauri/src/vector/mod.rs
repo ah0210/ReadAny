@@ -1,3 +1,4 @@
+use crate::storage;
 use anyhow::Result;
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
@@ -307,10 +308,8 @@ pub fn init_vector_db(app: &AppHandle, dimension: usize) -> Result<()> {
         }
     }
 
-    let app_dir = app
-        .path()
-        .app_data_dir()
-        .expect("failed to get app data dir");
+    let app_dir = storage::resolve_data_root(app).expect("failed to resolve data root");
+    std::fs::create_dir_all(&app_dir)?;
     let db_path = app_dir.join("vectors.db");
 
     let vector_db = VectorDB::new(&db_path, dimension)?;
@@ -385,10 +384,7 @@ pub fn vector_rebuild(app: AppHandle) -> Result<usize, String> {
     let db_guard = state.db.lock().unwrap();
 
     if let Some(db) = db_guard.as_ref() {
-        let app_dir = app
-            .path()
-            .app_data_dir()
-            .map_err(|e| e.to_string())?;
+        let app_dir = storage::resolve_data_root(&app)?;
         let main_db_path = app_dir.join("readany.db");
         db.rebuild_from_main_db(&main_db_path).map_err(|e| e.to_string())
     } else {
@@ -406,4 +402,12 @@ pub fn vector_reinit(app: AppHandle, dimension: usize) -> Result<(), String> {
     } else {
         Err("Vector database not initialized".to_string())
     }
+}
+
+#[tauri::command]
+pub fn vector_shutdown(app: AppHandle) -> Result<(), String> {
+    let state = app.state::<VectorDBState>();
+    let mut db_guard = state.db.lock().unwrap();
+    *db_guard = None;
+    Ok(())
 }

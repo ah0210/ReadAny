@@ -1,14 +1,11 @@
+use crate::storage;
 use rusqlite::Connection;
 use sha2::{Digest, Sha256};
 use tauri::AppHandle;
-use tauri::Manager;
 
 /// Get the path to the app's database file
 fn db_path(app: &AppHandle) -> Result<String, String> {
-    let app_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    let app_dir = storage::resolve_data_root(app)?;
     Ok(app_dir.join("readany.db").to_string_lossy().to_string())
 }
 

@@ -1,4 +1,5 @@
 mod db;
+mod storage;
 mod sync;
 mod vector;
 
@@ -40,6 +41,7 @@ pub fn run() {
             vector::vector_get_stats,
             vector::vector_rebuild,
             vector::vector_reinit,
+            vector::vector_shutdown,
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();
