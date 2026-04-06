@@ -168,7 +168,7 @@ export class TauriPlatformService implements IPlatformService {
 
   async fetch(url: string, options?: FetchOptions): Promise<Response> {
     const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
-    const { allowInsecure, timeoutMs: _timeoutMs, ...fetchOptions } = options ?? {};
+    const { allowInsecure, timeoutMs: _timeoutMs, responseType: _responseType, ...fetchOptions } = options ?? {};
     if (allowInsecure) {
       return tauriFetch(url, {
         ...fetchOptions,

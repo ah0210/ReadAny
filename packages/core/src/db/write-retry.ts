@@ -65,3 +65,12 @@ export async function runWithDbRetry<T>(
   );
   return queuedRun;
 }
+
+export async function runSerializedDbTask<T>(operation: () => Promise<T>): Promise<T> {
+  const queuedRun = writeQueue.then(operation, operation);
+  writeQueue = queuedRun.then(
+    () => undefined,
+    () => undefined,
+  );
+  return queuedRun;
+}

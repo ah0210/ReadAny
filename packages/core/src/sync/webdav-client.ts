@@ -3,8 +3,16 @@
  * WebDAV is HTTP with custom methods (PROPFIND, MKCOL, PUT, GET, DELETE).
  */
 
+import { Buffer } from "buffer";
 import { getPlatformService } from "../services/platform";
 import type { DavResource } from "./sync-types";
+
+export function sanitizeWebDavUrl(url: string): string {
+  return url
+    .replace(/[\u0000-\u001F\u007F]/g, "")
+    .trim()
+    .replace(/\/+$/, "");
+}
 
 export class WebDavClient {
   private baseUrl: string;
@@ -12,12 +20,19 @@ export class WebDavClient {
   private allowInsecure: boolean;
 
   constructor(url: string, username: string, password: string, allowInsecure?: boolean) {
-    // Normalize: remove trailing slash
-    this.baseUrl = url.replace(/\/+$/, "");
+    // Normalize: remove control chars/whitespace and trailing slash
+    this.baseUrl = sanitizeWebDavUrl(url);
     // Basic auth header
     const credentials = `${username}:${password}`;
-    // Use btoa for base64 encoding (available in both environments)
-    this.authHeader = `Basic ${btoa(credentials)}`;
+    // Use UTF-8 safe base64 encoding; btoa is unreliable in React Native/Android.
+    const encoded = Buffer.from(credentials, "utf8").toString("base64");
+    this.authHeader = `Basic ${encoded}`;
+    console.log("[WebDAV] auth debug", {
+      username,
+      passwordLength: password.length,
+      encodedPreview:
+        encoded.length > 24 ? `${encoded.slice(0, 12)}...${encoded.slice(-8)}` : encoded,
+    });
     this.allowInsecure = allowInsecure ?? false;
   }
 
@@ -39,6 +54,7 @@ export class WebDavClient {
       headers?: Record<string, string>;
       contentType?: string;
       timeoutMs?: number;
+      responseType?: "text" | "arraybuffer";
     } = {},
   ): Promise<Response> {
     const platform = getPlatformService();
@@ -61,6 +77,7 @@ export class WebDavClient {
         body: options.body as BodyInit | undefined,
         allowInsecure: this.allowInsecure,
         timeoutMs: options.timeoutMs,
+        responseType: options.responseType,
       });
       const elapsed = Date.now() - startTime;
       console.log(
@@ -111,8 +128,9 @@ export class WebDavClient {
   /** Create a directory (MKCOL) */
   async mkcol(path: string): Promise<void> {
     const resp = await this.request("MKCOL", path);
-    // 201 Created, 405 Already Exists — both OK
-    if (!resp.ok && resp.status !== 405) {
+    // 201 Created, 405 Already Exists, 409 Conflict (some WebDAV servers like
+    // Jianguoyun may return this for existing/intermediate paths) — all OK.
+    if (!resp.ok && resp.status !== 405 && resp.status !== 409) {
       throw new Error(`WebDAV MKCOL failed for ${path}: ${resp.status} ${resp.statusText}`);
     }
   }
@@ -150,7 +168,9 @@ export class WebDavClient {
 
   /** Download data from a path (GET) — returns Uint8Array */
   async get(path: string): Promise<Uint8Array> {
-    const resp = await this.request("GET", path);
+    const resp = await this.request("GET", path, {
+      responseType: "arraybuffer",
+    });
     if (!resp.ok) {
       throw new Error(`WebDAV GET failed for ${path}: ${resp.status} ${resp.statusText}`);
     }
@@ -158,15 +178,25 @@ export class WebDavClient {
     return new Uint8Array(buffer);
   }
 
+  /** Download text content from a path (GET) */
+  async getText(path: string): Promise<string> {
+    const resp = await this.request("GET", path, {
+      responseType: "text",
+    });
+    if (!resp.ok) {
+      throw new Error(`WebDAV GET failed for ${path}: ${resp.status} ${resp.statusText}`);
+    }
+    return resp.text();
+  }
+
   /** Download and parse JSON from a path */
   async getJSON<T>(path: string): Promise<T | null> {
     try {
-      const data = await this.get(path);
-      const text = new TextDecoder().decode(data);
+      const text = await this.getText(path);
       return JSON.parse(text) as T;
     } catch (e: unknown) {
       const err = e as { message?: string };
-      if (err.message?.includes("404")) return null;
+      if (err.message?.includes("404") || err.message?.includes("409")) return null;
       throw e;
     }
   }
@@ -207,7 +237,7 @@ export class WebDavClient {
       contentType: "application/xml",
     });
     if (!resp.ok && resp.status !== 207) {
-      if (resp.status === 404) return [];
+      if (resp.status === 404 || resp.status === 409) return [];
       throw new Error(`WebDAV PROPFIND failed for ${path}: ${resp.status} ${resp.statusText}`);
     }
     const xml = await resp.text();

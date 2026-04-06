@@ -28,6 +28,7 @@ import i18n from "@readany/core/i18n";
 
 /** Simple KV storage keys tracking (SecureStore doesn't have getAllKeys) */
 const KV_KEYS_INDEX = "__readany_kv_keys__";
+const SQLITE_OPERATION_QUEUES = new Map<string, Promise<void>>();
 
 export class ExpoPlatformService implements IPlatformService {
   readonly platformType = "mobile" as const;
@@ -144,10 +145,10 @@ export class ExpoPlatformService implements IPlatformService {
   async loadDatabase(path: string): Promise<IDatabase> {
     const SQLite = await import("expo-sqlite");
     const createQueuedAdapter = (
+      queueKey: string,
       db: Awaited<ReturnType<typeof SQLite.openDatabaseAsync>>,
       closeImpl: () => Promise<void>,
     ): IDatabase => {
-      let operationQueue = Promise.resolve();
       const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
       const isRetryableSqliteError = (error: unknown): boolean => {
         const message = error instanceof Error ? error.message : String(error);
@@ -176,12 +177,18 @@ export class ExpoPlatformService implements IPlatformService {
       };
 
       const enqueue = <T>(operation: () => Promise<T>): Promise<T> => {
-        const run = operationQueue.then(operation, operation);
-        operationQueue = run.then(
+        const currentQueue = SQLITE_OPERATION_QUEUES.get(queueKey) ?? Promise.resolve();
+        const run = currentQueue.then(operation, operation);
+        const settledRun = run.then(
           () => undefined,
           () => undefined,
         );
-        return run;
+        SQLITE_OPERATION_QUEUES.set(queueKey, settledRun);
+        return run.finally(() => {
+          if (SQLITE_OPERATION_QUEUES.get(queueKey) === settledRun) {
+            SQLITE_OPERATION_QUEUES.delete(queueKey);
+          }
+        });
       };
 
       return {
@@ -206,6 +213,7 @@ export class ExpoPlatformService implements IPlatformService {
       };
     };
     const normalizedPath = path.replace("sqlite:", "");
+    const queueKey = `sqlite:${normalizedPath}`;
     const isExternalPath =
       normalizedPath.includes("/") ||
       normalizedPath.includes("\\") ||
@@ -213,7 +221,7 @@ export class ExpoPlatformService implements IPlatformService {
 
     if (!isExternalPath) {
       const db = await SQLite.openDatabaseAsync(normalizedPath);
-      return createQueuedAdapter(db, async () => {
+      return createQueuedAdapter(queueKey, db, async () => {
         await db.closeAsync();
       });
     }
@@ -244,7 +252,7 @@ export class ExpoPlatformService implements IPlatformService {
       throw error;
     }
 
-    return createQueuedAdapter(db, async () => {
+    return createQueuedAdapter(queueKey, db, async () => {
         try {
           await db.closeAsync();
         } finally {
@@ -263,15 +271,20 @@ export class ExpoPlatformService implements IPlatformService {
   // ---- Network ----
 
   async fetch(url: string, options?: FetchOptions): Promise<Response> {
-    const { allowInsecure, timeoutMs, ...fetchOptions } = options ?? {};
+    const { allowInsecure, timeoutMs, responseType, ...fetchOptions } = options ?? {};
     const effectiveUrl = allowInsecure ? url.replace(/^https:\/\//i, "http://") : url;
     const method = fetchOptions?.method?.toUpperCase() || "GET";
 
     // Always use XHR for WebDAV to handle large binary files properly
     // React Native's fetch has issues with large arrayBuffer responses
-    const responseType = method === "GET" ? "arraybuffer" : "text";
+    const resolvedResponseType = responseType ?? (method === "GET" ? "arraybuffer" : "text");
     const effectiveTimeoutMs = timeoutMs ?? (method === "GET" ? 120000 : 15000);
-    return this._fetchWithXHR(effectiveUrl, fetchOptions, responseType, effectiveTimeoutMs);
+    return this._fetchWithXHR(
+      effectiveUrl,
+      fetchOptions,
+      resolvedResponseType,
+      effectiveTimeoutMs,
+    );
   }
 
   private _fetchWithXHR(

@@ -1,5 +1,6 @@
 import type { IDatabase } from "../services/platform";
 import { getPlatformService } from "../services/platform";
+import { runSerializedDbTask } from "./write-retry";
 /**
  * Database access layer — platform-agnostic via IDatabase interface
  * Uses getPlatformService().loadDatabase() to obtain a database connection.
@@ -12,9 +13,13 @@ import { generateId } from "../utils/generate-id";
 // Lazy-loaded database instances
 let db: IDatabase | null = null;
 let dbInitialized = false;
+let dbInitPromise: Promise<void> | null = null;
+let dbLoadPromise: Promise<IDatabase> | null = null;
 
 let localDb: IDatabase | null = null;
 let localDbInitialized = false;
+let localDbInitPromise: Promise<void> | null = null;
+let localDbLoadPromise: Promise<IDatabase> | null = null;
 
 const DB_FILENAME = "readany.db";
 const LOCAL_DB_FILENAME = "readany_local.db";
@@ -75,13 +80,23 @@ export async function getDatabaseFilePath(filename: string): Promise<string> {
 async function getDatabaseLocation(filename: string): Promise<string> {
   const platform = getPlatformService();
   if (!platform.isDesktop) {
-    return `sqlite:${filename}`;
+    return filename;
   }
 
   return `sqlite:${await getDatabaseFilePath(filename)}`;
 }
 
 async function configureDatabaseConnection(database: IDatabase): Promise<void> {
+  try {
+    await database.execute("PRAGMA journal_mode = WAL");
+  } catch {
+    // Some adapters may not support WAL mode changes
+  }
+  try {
+    await database.execute("PRAGMA synchronous = NORMAL");
+  } catch {
+    // Some adapters may not support synchronous mode changes
+  }
   try {
     await database.execute("PRAGMA foreign_keys = ON");
   } catch {
@@ -116,26 +131,46 @@ export async function cleanupOrphanedSyncRows(databaseArg?: IDatabase): Promise<
 }
 
 export async function getDB(): Promise<IDatabase> {
-  if (!db) {
-    const platform = getPlatformService();
-    db = await platform.loadDatabase(await getDatabaseLocation(DB_FILENAME));
-    await configureDatabaseConnection(db);
+  if (db) return db;
+
+  if (!dbLoadPromise) {
+    dbLoadPromise = (async () => {
+      const platform = getPlatformService();
+      const loadedDb = await platform.loadDatabase(await getDatabaseLocation(DB_FILENAME));
+      await configureDatabaseConnection(loadedDb);
+      db = loadedDb;
+      return loadedDb;
+    })().finally(() => {
+      dbLoadPromise = null;
+    });
   }
-  return db;
+
+  return dbLoadPromise;
 }
 
 /** Get or lazily open the local database (readany_local.db) */
 export async function getLocalDB(): Promise<IDatabase> {
-  if (!localDb) {
-    const platform = getPlatformService();
-    localDb = await platform.loadDatabase(await getDatabaseLocation(LOCAL_DB_FILENAME));
-    await configureDatabaseConnection(localDb);
+  if (localDb) return localDb;
+
+  if (!localDbLoadPromise) {
+    localDbLoadPromise = (async () => {
+      const platform = getPlatformService();
+      const loadedDb = await platform.loadDatabase(await getDatabaseLocation(LOCAL_DB_FILENAME));
+      await configureDatabaseConnection(loadedDb);
+      localDb = loadedDb;
+      return loadedDb;
+    })().finally(() => {
+      localDbLoadPromise = null;
+    });
   }
-  return localDb;
+
+  return localDbLoadPromise;
 }
 
 /** Close the active database connection and clear cache */
 export async function closeDB(): Promise<void> {
+  dbInitPromise = null;
+  dbLoadPromise = null;
   if (db) {
     try {
       await db.close();
@@ -152,6 +187,8 @@ export async function closeDB(): Promise<void> {
 
 /** Close the local database connection and clear cache */
 export async function closeLocalDB(): Promise<void> {
+  localDbInitPromise = null;
+  localDbLoadPromise = null;
   if (localDb) {
     try {
       await localDb.close();
@@ -286,11 +323,16 @@ async function insertTombstone(database: IDatabase, id: string, tableName: strin
 /** Initialize the database, creating tables if needed */
 export async function initDatabase(): Promise<void> {
   if (dbInitialized) return;
+  if (dbInitPromise) return dbInitPromise;
 
-  const database = await getDB();
+  dbInitPromise = (async () => {
+    await runSerializedDbTask(async () => {
+      if (dbInitialized) return;
 
-  // Create tables
-  await database.execute(`
+      const database = await getDB();
+
+      // Create tables
+      await database.execute(`
     CREATE TABLE IF NOT EXISTS books (
       id TEXT PRIMARY KEY,
       file_path TEXT NOT NULL,
@@ -316,7 +358,7 @@ export async function initDatabase(): Promise<void> {
     )
   `);
 
-  await database.execute(`
+      await database.execute(`
     CREATE TABLE IF NOT EXISTS highlights (
       id TEXT PRIMARY KEY,
       book_id TEXT NOT NULL,
@@ -331,7 +373,7 @@ export async function initDatabase(): Promise<void> {
     )
   `);
 
-  await database.execute(`
+      await database.execute(`
     CREATE TABLE IF NOT EXISTS notes (
       id TEXT PRIMARY KEY,
       book_id TEXT NOT NULL,
@@ -347,7 +389,7 @@ export async function initDatabase(): Promise<void> {
     )
   `);
 
-  await database.execute(`
+      await database.execute(`
     CREATE TABLE IF NOT EXISTS bookmarks (
       id TEXT PRIMARY KEY,
       book_id TEXT NOT NULL,
@@ -359,7 +401,7 @@ export async function initDatabase(): Promise<void> {
     )
   `);
 
-  await database.execute(`
+      await database.execute(`
     CREATE TABLE IF NOT EXISTS tags (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
@@ -367,7 +409,7 @@ export async function initDatabase(): Promise<void> {
     )
   `);
 
-  await database.execute(`
+      await database.execute(`
     CREATE TABLE IF NOT EXISTS book_tags (
       id TEXT PRIMARY KEY,
       book_id TEXT NOT NULL,
@@ -379,7 +421,7 @@ export async function initDatabase(): Promise<void> {
     )
   `);
 
-  await database.execute(`
+      await database.execute(`
     CREATE TABLE IF NOT EXISTS threads (
       id TEXT PRIMARY KEY,
       book_id TEXT,
@@ -389,7 +431,7 @@ export async function initDatabase(): Promise<void> {
     )
   `);
 
-  await database.execute(`
+      await database.execute(`
     CREATE TABLE IF NOT EXISTS messages (
       id TEXT PRIMARY KEY,
       thread_id TEXT NOT NULL,
@@ -403,7 +445,7 @@ export async function initDatabase(): Promise<void> {
     )
   `);
 
-  await database.execute(`
+      await database.execute(`
     CREATE TABLE IF NOT EXISTS skills (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -418,7 +460,7 @@ export async function initDatabase(): Promise<void> {
     )
   `);
 
-  await database.execute(`
+      await database.execute(`
     CREATE TABLE IF NOT EXISTS reading_sessions (
       id TEXT PRIMARY KEY,
       book_id TEXT NOT NULL,
@@ -432,54 +474,56 @@ export async function initDatabase(): Promise<void> {
     )
   `);
 
-  // Create indexes
-  await database.execute("CREATE INDEX IF NOT EXISTS idx_highlights_book ON highlights(book_id)");
-  await database.execute("CREATE INDEX IF NOT EXISTS idx_notes_book ON notes(book_id)");
-  await database.execute("CREATE INDEX IF NOT EXISTS idx_bookmarks_book ON bookmarks(book_id)");
-  await database.execute("CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id)");
-  await database.execute("CREATE INDEX IF NOT EXISTS idx_reading_sessions_book ON reading_sessions(book_id)");
+      // Create indexes
+      await database.execute("CREATE INDEX IF NOT EXISTS idx_highlights_book ON highlights(book_id)");
+      await database.execute("CREATE INDEX IF NOT EXISTS idx_notes_book ON notes(book_id)");
+      await database.execute("CREATE INDEX IF NOT EXISTS idx_bookmarks_book ON bookmarks(book_id)");
+      await database.execute("CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id)");
+      await database.execute(
+        "CREATE INDEX IF NOT EXISTS idx_reading_sessions_book ON reading_sessions(book_id)",
+      );
 
-  // Migrations: add columns that may be missing from older schema versions
-  try {
-    await database.execute("ALTER TABLE books ADD COLUMN format TEXT NOT NULL DEFAULT 'epub'");
-  } catch {
-    // Column already exists, ignore
-  }
-  try {
-    await database.execute("ALTER TABLE books ADD COLUMN tags TEXT DEFAULT '[]'");
-  } catch {
-    // Column already exists, ignore
-  }
-  try {
-    await database.execute("ALTER TABLE messages ADD COLUMN reasoning TEXT");
-  } catch {
-    // Column already exists, ignore
-  }
-  try {
-    await database.execute("ALTER TABLE messages ADD COLUMN parts_order TEXT");
-  } catch {
-    // Column already exists, ignore
-  }
-  // --- Sync migrations ---
-  // Migration 4: Add updated_at and file_hash to books
-  try {
-    await database.execute("ALTER TABLE books ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0");
-  } catch {
-    // Column already exists
-  }
-  try {
-    await database.execute("ALTER TABLE books ADD COLUMN file_hash TEXT");
-  } catch {
-    // Column already exists
-  }
-  try {
-    await database.execute("UPDATE books SET updated_at = added_at WHERE updated_at = 0");
-  } catch {
-    // Already updated
-  }
+      // Migrations: add columns that may be missing from older schema versions
+      try {
+        await database.execute("ALTER TABLE books ADD COLUMN format TEXT NOT NULL DEFAULT 'epub'");
+      } catch {
+        // Column already exists, ignore
+      }
+      try {
+        await database.execute("ALTER TABLE books ADD COLUMN tags TEXT DEFAULT '[]'");
+      } catch {
+        // Column already exists, ignore
+      }
+      try {
+        await database.execute("ALTER TABLE messages ADD COLUMN reasoning TEXT");
+      } catch {
+        // Column already exists, ignore
+      }
+      try {
+        await database.execute("ALTER TABLE messages ADD COLUMN parts_order TEXT");
+      } catch {
+        // Column already exists, ignore
+      }
+      // --- Sync migrations ---
+      // Migration 4: Add updated_at and file_hash to books
+      try {
+        await database.execute("ALTER TABLE books ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0");
+      } catch {
+        // Column already exists
+      }
+      try {
+        await database.execute("ALTER TABLE books ADD COLUMN file_hash TEXT");
+      } catch {
+        // Column already exists
+      }
+      try {
+        await database.execute("UPDATE books SET updated_at = added_at WHERE updated_at = 0");
+      } catch {
+        // Already updated
+      }
 
-  // Migration 5: Tombstones table
-  await database.execute(`
+      // Migration 5: Tombstones table
+      await database.execute(`
     CREATE TABLE IF NOT EXISTS sync_tombstones (
       id TEXT NOT NULL,
       table_name TEXT NOT NULL,
@@ -488,117 +532,132 @@ export async function initDatabase(): Promise<void> {
       PRIMARY KEY (id, table_name)
     )
   `);
-  await database.execute(
-    "CREATE INDEX IF NOT EXISTS idx_tombstones_deleted_at ON sync_tombstones(deleted_at)",
-  );
+      await database.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tombstones_deleted_at ON sync_tombstones(deleted_at)",
+      );
 
-  // Migration 6: Sync metadata table
-  await database.execute(`
+      // Migration 6: Sync metadata table
+      await database.execute(`
     CREATE TABLE IF NOT EXISTS sync_metadata (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     )
   `);
 
-  // Migration 7: Add sync_version and last_modified_by to all synced tables
-  const syncTables = [
-    "books",
-    "highlights",
-    "notes",
-    "bookmarks",
-    "tags",
-    "book_tags",
-    "reading_sessions",
-    "threads",
-    "messages",
-    "skills",
-  ];
-  for (const table of syncTables) {
-    try {
-      await database.execute(`ALTER TABLE ${table} ADD COLUMN sync_version INTEGER DEFAULT 0`);
-    } catch {
-      // Column already exists
-    }
-    try {
-      await database.execute(`ALTER TABLE ${table} ADD COLUMN last_modified_by TEXT`);
-    } catch {
-      // Column already exists
-    }
-  }
+      // Migration 7: Add sync_version and last_modified_by to all synced tables
+      const syncTables = [
+        "books",
+        "highlights",
+        "notes",
+        "bookmarks",
+        "tags",
+        "book_tags",
+        "reading_sessions",
+        "threads",
+        "messages",
+        "skills",
+      ];
+      for (const table of syncTables) {
+        try {
+          await database.execute(`ALTER TABLE ${table} ADD COLUMN sync_version INTEGER DEFAULT 0`);
+        } catch {
+          // Column already exists
+        }
+        try {
+          await database.execute(`ALTER TABLE ${table} ADD COLUMN last_modified_by TEXT`);
+        } catch {
+          // Column already exists
+        }
+      }
 
-  // Migration 8: Add updated_at to tables that need it for incremental sync
-  const tablesNeedingUpdatedAt = ["bookmarks"];
-  for (const table of tablesNeedingUpdatedAt) {
-    try {
-      await database.execute(
-        `ALTER TABLE ${table} ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0`,
-      );
-    } catch {
-      // Column already exists
-    }
-  }
-  // Initialize updated_at from created_at
-  try {
-    await database.execute("UPDATE bookmarks SET updated_at = created_at WHERE updated_at = 0");
-  } catch {
-    // Already updated or column doesn't exist
-  }
+      // Migration 8: Add updated_at to tables that need it for incremental sync
+      const tablesNeedingUpdatedAt = ["bookmarks"];
+      for (const table of tablesNeedingUpdatedAt) {
+        try {
+          await database.execute(
+            `ALTER TABLE ${table} ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0`,
+          );
+        } catch {
+          // Column already exists
+        }
+      }
+      // Initialize updated_at from created_at
+      try {
+        await database.execute("UPDATE bookmarks SET updated_at = created_at WHERE updated_at = 0");
+      } catch {
+        // Already updated or column doesn't exist
+      }
 
-  // Migration 9: Add sync_status to books for on-demand download
-  try {
-    await database.execute(
-      "ALTER TABLE books ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'local'",
-    );
-  } catch {
-    // Column already exists
-  }
+      // Migration 9: Add sync_status to books for on-demand download
+      try {
+        await database.execute(
+          "ALTER TABLE books ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'local'",
+        );
+      } catch {
+        // Column already exists
+      }
 
-  // Migration 10: Add updated_at and id to tags/book_tags for sync; add updated_at to reading_sessions
-  try {
-    await database.execute("ALTER TABLE tags ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0");
-  } catch {
-    // Column already exists
-  }
-  try {
-    await database.execute("ALTER TABLE book_tags ADD COLUMN id TEXT");
-    // Backfill id for existing rows (book_id || '-' || tag_id as stable key)
-    await database.execute(
-      "UPDATE book_tags SET id = book_id || '-' || tag_id WHERE id IS NULL",
-    );
-  } catch {
-    // Column already exists
-  }
-  try {
-    await database.execute(
-      "ALTER TABLE book_tags ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
-    );
-  } catch {
-    // Column already exists
-  }
-  try {
-    await database.execute(
-      "ALTER TABLE reading_sessions ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
-    );
-    await database.execute(
-      "UPDATE reading_sessions SET updated_at = started_at WHERE updated_at = 0",
-    );
-  } catch {
-    // Column already exists or table doesn't exist yet
-  }
+      // Migration 10: Add updated_at and id to tags/book_tags for sync; add updated_at to reading_sessions
+      try {
+        await database.execute("ALTER TABLE tags ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0");
+      } catch {
+        // Column already exists
+      }
+      try {
+        await database.execute("ALTER TABLE book_tags ADD COLUMN id TEXT");
+        // Backfill id for existing rows (book_id || '-' || tag_id as stable key)
+        await database.execute(
+          "UPDATE book_tags SET id = book_id || '-' || tag_id WHERE id IS NULL",
+        );
+      } catch {
+        // Column already exists
+      }
+      try {
+        await database.execute(
+          "ALTER TABLE book_tags ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
+        );
+      } catch {
+        // Column already exists
+      }
+      try {
+        await database.execute(
+          "ALTER TABLE reading_sessions ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
+        );
+        await database.execute(
+          "UPDATE reading_sessions SET updated_at = started_at WHERE updated_at = 0",
+        );
+      } catch {
+        // Column already exists or table doesn't exist yet
+      }
 
-  await cleanupOrphanedSyncRows(database);
+      const platform = getPlatformService();
+      if (platform.isDesktop) {
+        await cleanupOrphanedSyncRows(database);
+      }
 
-  dbInitialized = true;
+      dbInitialized = true;
+    });
 
-  // Also initialize the local database (chunks only)
-  await initLocalDatabase();
+    // Also initialize the local database (chunks only) after the main DB init
+    // finishes, so schema migration and sync apply never compete for writes.
+    await initLocalDatabase();
+  })().finally(() => {
+    dbInitPromise = null;
+  });
+
+  return dbInitPromise;
 }
 export async function initLocalDatabase(): Promise<void> {
   if (localDbInitialized) return;
+  if (localDbInitPromise) return localDbInitPromise;
 
-  const database = await getLocalDB();
+  localDbInitPromise = (async () => {
+    await runSerializedDbTask(async () => {
+      if (localDbInitialized) return;
 
-  await database.execute(`
+      const database = await getLocalDB();
+
+      await database.execute(`
     CREATE TABLE IF NOT EXISTS chunks (
       id TEXT PRIMARY KEY,
       book_id TEXT NOT NULL,
@@ -614,25 +673,36 @@ export async function initLocalDatabase(): Promise<void> {
     )
   `);
 
-  try {
-    await database.execute(
-      "ALTER TABLE chunks ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
-    );
-  } catch {
-    // Column already exists on upgraded installs.
-  }
+      try {
+        await database.execute(
+          "ALTER TABLE chunks ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
+        );
+      } catch {
+        // Column already exists on upgraded installs.
+      }
 
-  // Create indexes
-  await database.execute("CREATE INDEX IF NOT EXISTS idx_chunks_book ON chunks(book_id)");
+      // Create indexes
+      await database.execute("CREATE INDEX IF NOT EXISTS idx_chunks_book ON chunks(book_id)");
 
-  localDbInitialized = true;
+      localDbInitialized = true;
 
-  // Migrate data from main DB to local DB on first run
-  await migrateDataToLocalDB();
+      // Migrate data from main DB to local DB on first run
+      await migrateDataToLocalDB();
+    });
+  })().finally(() => {
+    localDbInitPromise = null;
+  });
+
+  return localDbInitPromise;
 }
 
 /** Migrate chunks from main DB to local DB (one-time) */
 async function migrateDataToLocalDB(): Promise<void> {
+  const platform = getPlatformService();
+  if (!platform.isDesktop) {
+    return;
+  }
+
   const mainDB = await getDB();
 
   // Check if migration has already been done
@@ -663,14 +733,23 @@ async function migrateDataToLocalDB(): Promise<void> {
   // Migrate chunks
   if (hasChunksInMain) {
     try {
-      const chunks = await mainDB.select<Record<string, unknown>>("SELECT id, book_id, chapter_index, chapter_title, content, token_count, start_cfi, end_cfi, segment_cfis, embedding FROM chunks");
+      const chunks = await mainDB.select<Record<string, unknown>>(
+        "SELECT id, book_id, chapter_index, chapter_title, content, token_count, start_cfi, end_cfi, segment_cfis, embedding FROM chunks",
+      );
       for (const chunk of chunks) {
         await localDB.execute(
           "INSERT OR IGNORE INTO chunks (id, book_id, chapter_index, chapter_title, content, token_count, start_cfi, end_cfi, segment_cfis, embedding) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
           [
-            chunk.id, chunk.book_id, chunk.chapter_index, chunk.chapter_title,
-            chunk.content, chunk.token_count, chunk.start_cfi, chunk.end_cfi,
-            chunk.segment_cfis, chunk.embedding,
+            chunk.id,
+            chunk.book_id,
+            chunk.chapter_index,
+            chunk.chapter_title,
+            chunk.content,
+            chunk.token_count,
+            chunk.start_cfi,
+            chunk.end_cfi,
+            chunk.segment_cfis,
+            chunk.embedding,
           ],
         );
       }
@@ -923,10 +1002,7 @@ export async function updateBook(id: string, updates: Partial<Book>): Promise<vo
   await database.execute(`UPDATE books SET ${sets.join(", ")} WHERE id = ?`, values);
 }
 
-export async function setBookSyncStatus(
-  id: string,
-  syncStatus: Book["syncStatus"],
-): Promise<void> {
+export async function setBookSyncStatus(id: string, syncStatus: Book["syncStatus"]): Promise<void> {
   const database = await getDB();
   await database.execute("UPDATE books SET sync_status = ? WHERE id = ?", [syncStatus, id]);
 }
@@ -1602,7 +1678,6 @@ export async function updateReadingSession(
   values.push(syncVersion);
   sets.push("last_modified_by = ?");
   values.push(deviceId);
-
 
   values.push(id);
   await database.execute(`UPDATE reading_sessions SET ${sets.join(", ")} WHERE id = ?`, values);

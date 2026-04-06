@@ -12,6 +12,7 @@ import { DEFAULT_SYNC_CONFIG, SYNC_CONFIG_KEY, SYNC_SECRET_KEYS } from "../sync/
 import type { ISyncBackend } from "../sync/sync-backend";
 import { createSyncBackend, getSecretKeyForBackend } from "../sync/sync-backend-factory";
 import { REMOTE_MANIFEST } from "../sync/sync-types";
+import { sanitizeWebDavUrl } from "../sync/webdav-client";
 import type {
   RemoteSyncManifest,
   SyncDirection,
@@ -48,7 +49,9 @@ function statusFromProgress(progress: SyncProgress): SyncStatusType {
 async function flushPendingReadingSession(): Promise<void> {
   try {
     const { useReadingSessionStore } = await import("./reading-session-store");
+    console.log("[SyncStore] Flushing pending reading session before sync...");
     await useReadingSessionStore.getState().saveCurrentSession();
+    console.log("[SyncStore] Pending reading session flushed.");
   } catch (error) {
     console.warn("[SyncStore] Failed to flush reading session before sync:", error);
   }
@@ -167,6 +170,17 @@ export interface SyncState {
   resetSync: () => Promise<void>;
 }
 
+function normalizeSyncConfig(config: SyncConfig): SyncConfig {
+  if (config.type === "webdav") {
+    return {
+      ...config,
+      url: sanitizeWebDavUrl(config.url),
+      username: config.username.trim(),
+    };
+  }
+  return config;
+}
+
 export const useSyncStore = create<SyncState>((set, get) => ({
   config: null,
   isConfigured: false,
@@ -185,10 +199,14 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       console.log(`[SyncStore] loadConfig: configStr = ${configStr ? "found" : "not found"}`);
       if (configStr) {
         const parsedConfig = JSON.parse(configStr) as SyncConfig;
+        const normalizedConfig = normalizeSyncConfig(parsedConfig);
+        if (JSON.stringify(parsedConfig) !== JSON.stringify(normalizedConfig)) {
+          await platform.kvSetItem(SYNC_CONFIG_KEY, JSON.stringify(normalizedConfig));
+        }
         const config =
-          parsedConfig.type === "webdav" || parsedConfig.type === "s3"
-            ? ({ ...DEFAULT_SYNC_CONFIG, ...parsedConfig } as SyncConfig)
-            : parsedConfig;
+          normalizedConfig.type === "webdav" || normalizedConfig.type === "s3"
+            ? ({ ...DEFAULT_SYNC_CONFIG, ...normalizedConfig } as SyncConfig)
+            : normalizedConfig;
         const secretKey = config.type !== "lan" ? getSecretKeyForBackend(config.type) : null;
         const secret = secretKey ? await platform.kvGetItem(secretKey) : null;
         console.log(
@@ -232,8 +250,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     const existing = get().config;
     const config: WebDavConfig = {
       type: "webdav",
-      url: url.replace(/\/+$/, ""),
-      username,
+      url: sanitizeWebDavUrl(url),
+      username: username.trim(),
       allowInsecure: allowInsecure ?? (existing as WebDavConfig)?.allowInsecure ?? false,
       autoSync: (existing as WebDavConfig)?.autoSync ?? DEFAULT_SYNC_CONFIG.autoSync,
       syncIntervalMins:
@@ -259,7 +277,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   },
 
   testWebDavConnection: async (url, username, password, allowInsecure) => {
-    const client = new WebDavClient(url, username, password, allowInsecure);
+    const client = new WebDavClient(sanitizeWebDavUrl(url), username.trim(), password, allowInsecure);
     return client.testConnection();
   },
 
@@ -331,10 +349,9 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         }
       }
 
-      set({ status: "checking", error: null, pendingDirection: null });
-
       try {
         await flushPendingReadingSession();
+        set({ status: "checking", error: null, pendingDirection: null });
         const backend = createSyncBackend(state.config, secret || "");
 
         const connected = await backend.testConnection();
@@ -401,10 +418,9 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     }
 
     return runWithSyncLock(async () => {
-      set({ status: "checking", error: null, pendingDirection: null });
-
       try {
         await flushPendingReadingSession();
+        set({ status: "checking", error: null, pendingDirection: null });
         if (backend.type === "lan") {
           const { runSync } = await import("../sync/sync-engine");
           const remoteManifest = await backend
@@ -644,10 +660,9 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     const config = state.config;
 
     return runWithSyncLock(async () => {
-      set({ status: "checking", error: null, pendingDirection: null, progress: null });
-
       try {
         await flushPendingReadingSession();
+        set({ status: "checking", error: null, pendingDirection: null, progress: null });
         const backend = createSyncBackend(config, secret || "");
         const connected = await backend.testConnection();
 

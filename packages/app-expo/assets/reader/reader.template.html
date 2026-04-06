@@ -106,12 +106,6 @@
       if (RN) RN.postMessage(JSON.stringify({ type, ...data }));
     }
 
-    function debugLog(message, data) {
-      postToRN('debug', {
-        message: data ? `${message} ${JSON.stringify(data)}` : message,
-      });
-    }
-
     // State
     let view = null;
     let currentBook = null;
@@ -122,7 +116,6 @@
     let totalSections = 0;
     let currentThemeColors = { bg: '#1c1c1e', fg: '#e8e8ed', muted: '#7c7c82', primary: '#3b82f6' };
     let lastRendererStyles = '';
-    let tapNavigationLockUntil = 0;
     let tapNavigationInFlight = false;
 
     // Store user annotations for re-rendering on page change
@@ -359,17 +352,9 @@
         var snippetTimer = null;
         el.addEventListener('relocate', (e) => {
           const detail = e.detail;
-          debugLog('[relocate]', {
-            cfi: detail.cfi,
-            section: detail.section,
-            fraction: detail.fraction,
-            lockRemaining: Math.max(0, tapNavigationLockUntil - Date.now()),
-            inFlight: tapNavigationInFlight,
-          });
           if (tapNavigationInFlight) {
             setTimeout(() => {
               tapNavigationInFlight = false;
-              debugLog('[tap] inFlight cleared after relocate');
             }, 80);
           }
           if (detail.section != null) {
@@ -722,13 +707,7 @@ a { color: ${primary} !important; }
       }, { passive: true });
 
       doc.addEventListener('touchend', (e) => {
-        if (Date.now() < tapNavigationLockUntil) {
-          debugLog('[tap] ignored by lock', { remainingMs: tapNavigationLockUntil - Date.now() });
-          tapState = null;
-          return;
-        }
         if (tapNavigationInFlight) {
-          debugLog('[tap] ignored by inFlight');
           tapState = null;
           return;
         }
@@ -757,21 +736,7 @@ a { color: ${primary} !important; }
         const centerStart = viewW * 0.375;
         const centerEnd = viewW * 0.625;
 
-        debugLog('[tap] touchend', {
-          startX: state.startX,
-          startY: state.startY,
-          viewportX,
-          normalizedX,
-          viewW,
-          centerStart,
-          centerEnd,
-          currentSectionIndex,
-          totalSections,
-        });
-
         if (normalizedX >= centerStart && normalizedX <= centerEnd) {
-          debugLog('[tap] center -> controls', { normalizedX });
-          tapNavigationLockUntil = Date.now() + 250;
           e.preventDefault();
           e.stopPropagation();
           postToRN('tap', {});
@@ -779,19 +744,16 @@ a { color: ${primary} !important; }
         }
 
         tapNavigationInFlight = true;
-        tapNavigationLockUntil = Date.now() + 450;
         e.preventDefault();
         e.stopPropagation();
         const dir = currentBook && currentBook.dir === 'rtl' ? 'rtl' : 'ltr';
 
         if (normalizedX < centerStart) {
-          debugLog('[tap] edge prev', { normalizedX, dir, currentSectionIndex });
           if (view) {
             if (dir === 'rtl') view.next();
             else view.prev();
           }
         } else {
-          debugLog('[tap] edge next', { normalizedX, dir, currentSectionIndex });
           if (view) {
             if (dir === 'rtl') view.prev();
             else view.next();

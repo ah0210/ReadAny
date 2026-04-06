@@ -15,6 +15,8 @@ import {
   getDB,
   getDeviceId as getLocalDeviceId,
 } from "../db/database";
+import { getPlatformService } from "../services/platform";
+import { runSerializedDbTask } from "../db/write-retry";
 import type { ISyncBackend } from "./sync-backend";
 
 interface SyncTableConfig {
@@ -62,6 +64,18 @@ function isForeignKeyConstraintError(error: unknown): boolean {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function yieldToEventLoop(): Promise<void> {
+  await sleep(0);
+}
+
+function shouldRunSyncCleanup(): boolean {
+  try {
+    return getPlatformService().isDesktop;
+  } catch {
+    return false;
+  }
 }
 
 async function withDatabaseLockRetry<T>(
@@ -137,7 +151,9 @@ async function setLastSyncTimestamp(timestamp: number): Promise<void> {
 export async function collectChanges(since: number): Promise<DeviceSyncPayload> {
   await ensureNoTransaction();
   const db = await getDB();
-  await cleanupOrphanedSyncRows(db);
+  if (shouldRunSyncCleanup()) {
+    await cleanupOrphanedSyncRows(db);
+  }
   const deviceId = await getDeviceId();
   const now = Date.now();
 
@@ -197,10 +213,13 @@ export async function collectChanges(since: number): Promise<DeviceSyncPayload> 
 export async function applyChanges(
   payload: DeviceSyncPayload,
 ): Promise<{ applied: number; skipped: number }> {
-  return withDatabaseLockRetry(async () => {
+  return runSerializedDbTask(() =>
+    withDatabaseLockRetry(async () => {
     await ensureNoTransaction();
     const db = await getDB();
-    await cleanupOrphanedSyncRows(db);
+    if (shouldRunSyncCleanup()) {
+      await cleanupOrphanedSyncRows(db);
+    }
     let applied = 0;
     let skipped = 0;
 
@@ -212,43 +231,34 @@ export async function applyChanges(
 
       const { pk, timestampCol } = tableInfo;
       const exclude = tableInfo.excludeColumns ?? [];
+      console.log(
+        `[SimpleSync] Applying table ${tableName}: ${tableData.records.length} record(s), ${tableData.deletedIds.length} deletion(s)`,
+      );
+      const existingTimestamps = await loadExistingTimestamps(
+        db,
+        tableName,
+        pk,
+        timestampCol,
+        tableData.records.map((record) => record[pk]).filter((value) => value !== undefined),
+      );
+      let processedRecords = 0;
 
       for (const record of tableData.records) {
         const pkValue = record[pk];
         const remoteTs = record[timestampCol] as number;
 
-        const existing = await db.select<Record<string, unknown>>(
-          `SELECT ${timestampCol} FROM ${tableName} WHERE ${pk} = ?`,
-          [pkValue],
-        );
-
         const safeRecord = exclude.length > 0
           ? Object.fromEntries(Object.entries(record).filter(([k]) => !exclude.includes(k)))
           : record;
 
-        if (existing.length > 0) {
-          const localTs = existing[0][timestampCol] as number;
-          if (remoteTs > localTs) {
-            try {
-              await upsertRecord(db, tableName, safeRecord, pk);
-              applied++;
-            } catch (error) {
-              if (isForeignKeyConstraintError(error)) {
-                console.warn(
-                  `[SimpleSync] Skipping orphaned ${tableName} record ${String(pkValue)}: ${error instanceof Error ? error.message : String(error)}`,
-                );
-                skipped++;
-                continue;
-              }
-              throw error;
-            }
-          } else {
-            skipped++;
-          }
+        const localTs = existingTimestamps.get(String(pkValue));
+        if (localTs !== undefined && remoteTs <= localTs) {
+          skipped++;
         } else {
           try {
             await upsertRecord(db, tableName, safeRecord, pk);
             applied++;
+            existingTimestamps.set(String(pkValue), remoteTs);
           } catch (error) {
             if (isForeignKeyConstraintError(error)) {
               console.warn(
@@ -260,16 +270,29 @@ export async function applyChanges(
             throw error;
           }
         }
+
+        processedRecords++;
+        if (processedRecords % 100 === 0) {
+          console.log(
+            `[SimpleSync] Applying table ${tableName}: ${processedRecords}/${tableData.records.length} record(s) processed`,
+          );
+          await yieldToEventLoop();
+        }
       }
 
       for (const deletedId of tableData.deletedIds) {
         await db.execute(`DELETE FROM ${tableName} WHERE ${pk} = ?`, [deletedId]);
         applied++;
       }
+
+      console.log(
+        `[SimpleSync] Finished table ${tableName}: applied=${applied}, skipped=${skipped}`,
+      );
     }
 
     return { applied, skipped };
-  }, "apply remote changes");
+    }, "apply remote changes"),
+  );
 }
 
 async function upsertRecord(
@@ -292,6 +315,33 @@ async function upsertRecord(
      ON CONFLICT(${pk}) DO UPDATE SET ${updateSet}`,
     values,
   );
+}
+
+async function loadExistingTimestamps(
+  db: Awaited<ReturnType<typeof getDB>>,
+  tableName: string,
+  pk: string,
+  timestampCol: string,
+  ids: unknown[],
+): Promise<Map<string, number>> {
+  const timestamps = new Map<string, number>();
+  if (ids.length === 0) return timestamps;
+
+  const chunkSize = 200;
+  for (let offset = 0; offset < ids.length; offset += chunkSize) {
+    const chunk = ids.slice(offset, offset + chunkSize);
+    const placeholders = chunk.map(() => "?").join(", ");
+    const rows = await db.select<{ id: string; timestamp: number | null }>(
+      `SELECT ${pk} AS id, ${timestampCol} AS timestamp FROM ${tableName} WHERE ${pk} IN (${placeholders})`,
+      chunk,
+    );
+
+    for (const row of rows) {
+      timestamps.set(String(row.id), row.timestamp ?? 0);
+    }
+  }
+
+  return timestamps;
 }
 
 // ---------------------------------------------------------------------------
@@ -341,6 +391,7 @@ export async function runSimpleSync(
     // 2. Pull and apply all other devices' changesets
     onProgress?.({ phase: "database", operation: "download", message: "获取其他设备的变更..." });
     const remoteFiles = await listRemoteDeviceFiles(backend);
+    console.log(`[SimpleSync] Found ${remoteFiles.length} remote device snapshot(s)`);
 
     let totalApplied = 0;
     let remoteSyncError: string | null = null;
@@ -349,11 +400,18 @@ export async function runSimpleSync(
       if (deviceId === localDeviceId) continue;
 
       try {
+        console.log(`[SimpleSync] Downloading changes from device ${deviceId}...`);
         const payload = await backend.getJSON<DeviceSyncPayload>(path);
         if (!payload) continue;
+        console.log(
+          `[SimpleSync] Downloaded device ${deviceId}: ${Object.keys(payload.tables).length} table(s)`,
+        );
 
         onProgress?.({ phase: "database", operation: "download", message: `应用设备 ${deviceId.slice(0, 8)} 的变更...` });
         const result = await applyChanges(payload);
+        console.log(
+          `[SimpleSync] Applied device ${deviceId}: applied=${result.applied}, skipped=${result.skipped}`,
+        );
         totalApplied += result.applied;
       } catch (e) {
         const error = e instanceof Error ? e.message : String(e);

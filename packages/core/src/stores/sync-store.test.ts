@@ -197,6 +197,44 @@ describe("useSyncStore", () => {
     });
   });
 
+  it("sanitizes WebDAV URL control characters when saving config", async () => {
+    mockPlatformService.kvGetItem.mockResolvedValue("saved-secret");
+
+    await useSyncStore
+      .getState()
+      .saveWebDavConfig("https://dav.example.com/root/\n", "alice", "password", false);
+
+    const savedConfigCall = mockPlatformService.kvSetItem.mock.calls.find(
+      ([key]) => key === "sync_config",
+    );
+    expect(savedConfigCall).toBeTruthy();
+    expect(JSON.parse(savedConfigCall![1] as string)).toMatchObject({
+      type: "webdav",
+      url: "https://dav.example.com/root",
+      username: "alice",
+    });
+  });
+
+  it("sanitizes persisted WebDAV URL when loading config", async () => {
+    mockPlatformService.kvGetItem.mockImplementation(async (key: string) => {
+      if (key === "sync_config") {
+        return JSON.stringify({
+          ...baseConfig,
+          url: "https://dav.example.com/root/\n",
+        } satisfies SyncConfig);
+      }
+      if (key === "sync_webdav_password") {
+        return "password";
+      }
+      return null;
+    });
+
+    await useSyncStore.getState().loadConfig();
+
+    expect(getWebDavConfigFromState().url).toBe("https://dav.example.com/root");
+    expect(useSyncStore.getState().isConfigured).toBe(true);
+  });
+
   it("clamps sync interval updates to the supported range", async () => {
     useSyncStore.setState({
       config: baseConfig,

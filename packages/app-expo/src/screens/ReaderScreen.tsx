@@ -713,8 +713,13 @@ export function ReaderScreen({ route, navigation }: Props) {
         const lastLocation = book.currentCfi || undefined;
 
         if (Platform.OS === "android") {
+          // Android WebView fetch(file:// / content://) is unreliable here and can throw
+          // "TypeError: Failed to fetch". Use base64 like iOS for consistent loading.
+          const base64 = await FileSystem.readAsStringAsync(absPath, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
           bridge.openBook({
-            uri: platform.convertFileSrc(absPath),
+            base64,
             fileName: book.filePath.split("/").pop() || "book.epub",
             lastLocation,
             pageMargin: settingPageMargin,

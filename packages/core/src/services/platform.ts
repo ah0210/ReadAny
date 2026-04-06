@@ -23,6 +23,8 @@ export interface FetchOptions extends RequestInit {
   allowInsecure?: boolean;
   /** Optional request timeout in milliseconds */
   timeoutMs?: number;
+  /** Preferred response type for platforms that support native request tuning */
+  responseType?: "text" | "arraybuffer";
 }
 
 export interface UpdateInfo {
