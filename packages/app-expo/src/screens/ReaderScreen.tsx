@@ -359,6 +359,7 @@ const TOOLBAR_HIDE_OFFSET = 100;
   const ttsConfig = useTTSStore((s) => s.config);
   const ttsUpdateConfig = useTTSStore((s) => s.updateConfig);
   const ttsSetOnEnd = useTTSStore((s) => s.setOnEnd);
+  const ttsSetCurrentBook = useTTSStore((s) => s.setCurrentBook);
   const ttsCurrentChunkIndex = useTTSStore((s) => s.currentChunkIndex);
   const ttsTotalChunks = useTTSStore((s) => s.totalChunks);
 
@@ -1088,11 +1089,12 @@ const TOOLBAR_HIDE_OFFSET = 100;
       setTtsLastText(normalized);
       ttsContinuousRef.current = false;
       ttsSetOnEnd(null);
+      ttsSetCurrentBook(bookTitle || book?.meta.title || "", currentChapter, bookId);
       setShowControls(false);
       setShowTTS(true);
       ttsPlay(normalized);
     },
-    [ttsPlay, ttsSetOnEnd],
+    [ttsPlay, ttsSetOnEnd, ttsSetCurrentBook, bookTitle, book, currentChapter, bookId],
   );
 
   const startPageTTS = useCallback(
@@ -1105,11 +1107,12 @@ const TOOLBAR_HIDE_OFFSET = 100;
       setTtsLastText(normalized);
       ttsContinuousRef.current = continuous;
       ttsSetOnEnd(continuous ? handleTTSPageEnd : null);
+      ttsSetCurrentBook(bookTitle || book?.meta.title || "", currentChapter, bookId);
       setShowControls(false);
       setShowTTS(true);
       ttsPlay(normalized);
     },
-    [handleTTSPageEnd, ttsContinuousEnabled, ttsPlay, ttsSetOnEnd],
+    [handleTTSPageEnd, ttsContinuousEnabled, ttsPlay, ttsSetOnEnd, ttsSetCurrentBook, bookTitle, book, currentChapter, bookId],
   );
 
   const handleSpeak = useCallback(() => {
@@ -1223,10 +1226,13 @@ const TOOLBAR_HIDE_OFFSET = 100;
 
   useEffect(() => {
     return () => {
-      ttsStop();
+      // Don't stop TTS on unmount — the floating bubble should keep playing
+      // while the user navigates to other screens.
+      // Just clear the continuous-reading callback that depends on this WebView.
+      ttsContinuousRef.current = false;
       ttsSetOnEnd(null);
     };
-  }, [ttsStop, ttsSetOnEnd]);
+  }, [ttsSetOnEnd]);
 
   if (loading && !webViewReady && !readerHtmlUri) {
     return (

@@ -14,6 +14,11 @@ export interface TTSState {
   currentText: string;
   config: TTSConfig;
   onEnd: (() => void) | null;
+  currentBookTitle: string;
+  currentChapterTitle: string;
+  currentBookId: string;
+  currentChunkIndex: number;
+  totalChunks: number;
 
   play: (text: string) => void;
   pause: () => void;
@@ -23,6 +28,8 @@ export interface TTSState {
   updateConfig: (updates: Partial<TTSConfig>) => void;
   setPlayState: (state: TTSPlayState) => void;
   setOnEnd: (cb: (() => void) | null) => void;
+  setCurrentBook: (title: string, chapter: string, bookId?: string) => void;
+  setChunkProgress: (index: number, total: number) => void;
 }
 
 const DEFAULT_TTS_CONFIG: TTSConfig = {
@@ -41,6 +48,11 @@ export const useTTSStore = create<TTSState>()(
     currentText: "",
     config: DEFAULT_TTS_CONFIG,
     onEnd: null,
+    currentBookTitle: "",
+    currentChapterTitle: "",
+    currentBookId: "",
+    currentChunkIndex: 0,
+    totalChunks: 0,
 
     play: (text: string) => {
       console.log("[TTSStore] play called with text length:", text?.length);
@@ -119,6 +131,10 @@ export const useTTSStore = create<TTSState>()(
     setPlayState: (playState) => set({ playState }),
 
     setOnEnd: (cb) => set({ onEnd: cb }),
+
+    setCurrentBook: (title, chapter, bookId) => set({ currentBookTitle: title, currentChapterTitle: chapter, currentBookId: bookId ?? "" }),
+
+    setChunkProgress: (index, total) => set({ currentChunkIndex: index, totalChunks: total }),
   })),
 );
 
