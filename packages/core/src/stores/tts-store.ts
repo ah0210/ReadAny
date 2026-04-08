@@ -84,6 +84,10 @@ export interface TTSState {
   config: TTSConfig;
   /** Callback invoked when current text finishes playing naturally (not by stop) */
   onEnd: (() => void) | null;
+  /** Index of the currently-speaking chunk (0-based) */
+  currentChunkIndex: number;
+  /** Total number of chunks for the current text */
+  totalChunks: number;
 
   // Actions
   play: (text: string) => void;
@@ -102,13 +106,19 @@ export const useTTSStore = create<TTSState>()(
     currentText: "",
     config: DEFAULT_TTS_CONFIG,
     onEnd: null,
+    currentChunkIndex: 0,
+    totalChunks: 0,
 
     play: (text: string) => {
       const { config } = get();
-      set({ playState: "loading", currentText: text });
+      set({ playState: "loading", currentText: text, currentChunkIndex: 0, totalChunks: 0 });
 
       const onState = (state: "playing" | "paused" | "stopped") => {
         set({ playState: state });
+      };
+
+      const onChunk = (index: number, total: number) => {
+        set({ currentChunkIndex: index, totalChunks: total });
       };
 
       const handleEnd = () => {
@@ -119,16 +129,19 @@ export const useTTSStore = create<TTSState>()(
       if (config.engine === "dashscope" && config.dashscopeApiKey) {
         const player = getDashScopeTTS();
         player.onStateChange = onState;
+        player.onChunkChange = onChunk;
         player.onEnd = handleEnd;
         player.speak(text, config);
       } else if (config.engine === "edge") {
         const player = getEdgeTTS();
         player.onStateChange = onState;
+        player.onChunkChange = onChunk;
         player.onEnd = handleEnd;
         player.speak(text, config);
       } else {
         const player = getBrowserTTS();
         player.onStateChange = onState;
+        player.onChunkChange = onChunk;
         player.onEnd = handleEnd;
         player.speak(text, config);
       }
@@ -166,7 +179,7 @@ export const useTTSStore = create<TTSState>()(
       browser.stop();
       edge.stop();
       dashscope.stop();
-      set({ playState: "stopped", currentText: "" });
+      set({ playState: "stopped", currentText: "", currentChunkIndex: 0, totalChunks: 0 });
     },
 
     toggle: (text?: string) => {

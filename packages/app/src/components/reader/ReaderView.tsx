@@ -438,6 +438,8 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   const ttsConfig = useTTSStore((s) => s.config);
   const ttsUpdateConfig = useTTSStore((s) => s.updateConfig);
   const ttsSetOnEnd = useTTSStore((s) => s.setOnEnd);
+  const ttsCurrentChunkIndex = useTTSStore((s) => s.currentChunkIndex);
+  const ttsTotalChunks = useTTSStore((s) => s.totalChunks);
 
   /** Whether TTS is in continuous reading mode (auto page-turn) */
   const ttsContinuousRef = useRef(false);
@@ -987,6 +989,22 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     }, 600);
   }, [ttsPlay, ttsSetOnEnd, ttsStop]);
 
+  const handleTTSPrevChapter = useCallback(() => {
+    const currentIdx = readerTab?.chapterIndex ?? -1;
+    const idx = currentIdx > 0 ? currentIdx - 1 : 0;
+    if (tocItems[idx]) {
+      handleGoToChapter(tocItems[idx].href);
+    }
+  }, [readerTab?.chapterIndex, tocItems, handleGoToChapter]);
+
+  const handleTTSNextChapter = useCallback(() => {
+    const currentIdx = readerTab?.chapterIndex ?? -1;
+    const idx = currentIdx >= 0 && currentIdx < tocItems.length - 1 ? currentIdx + 1 : tocItems.length - 1;
+    if (tocItems[idx]) {
+      handleGoToChapter(tocItems[idx].href);
+    }
+  }, [readerTab?.chapterIndex, tocItems, handleGoToChapter]);
+
   const startSelectionTTS = useCallback(
     (text: string) => {
       const normalized = text.trim();
@@ -1496,6 +1514,8 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
                 : t("tts.fromCurrentPage")
             }
             continuousEnabled={ttsContinuousEnabled}
+            currentChunkIndex={ttsCurrentChunkIndex}
+            totalChunks={ttsTotalChunks}
             onClose={() => setShowTTS(false)}
             onReplay={handleTTSReplay}
             onPlayPause={handleTTSPlayPause}
@@ -1507,6 +1527,9 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
             onAdjustRate={handleAdjustTTSRate}
             onAdjustPitch={handleAdjustTTSPitch}
             onToggleContinuous={handleToggleTTSContinuous}
+            onUpdateConfig={ttsUpdateConfig}
+            onPrevChapter={tocItems.length > 0 ? handleTTSPrevChapter : undefined}
+            onNextChapter={tocItems.length > 0 ? handleTTSNextChapter : undefined}
           />
 
           {/* Always-visible thin progress bar at the very bottom */}

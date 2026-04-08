@@ -979,6 +979,11 @@
     "voiceSelect": "Voice",
     "noSystemVoices": "No system voices detected",
     "testText": "This is a test voice. ReadAny reads for you.",
-    "params": "Parameters"
+    "params": "Parameters",
+    "selectVoice": "Select Voice",
+    "selectEngine": "TTS Engine",
+    "prevChapter": "Previous Chapter",
+    "nextChapter": "Next Chapter",
+    "browserVoiceNote": "Browser voice can be selected in system settings"
   }
 }

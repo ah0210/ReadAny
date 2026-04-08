@@ -1,18 +1,25 @@
-import { buildNarrationPreview, getTTSVoiceLabel, type TTSConfig, type TTSPlayState } from "@readany/core/tts";
 import {
-  Bot,
+  buildNarrationPreview,
+  DASHSCOPE_VOICES,
+  EDGE_TTS_VOICES,
+  getTTSVoiceLabel,
+  type TTSConfig,
+  type TTSPlayState,
+} from "@readany/core/tts";
+import {
   ChevronLeft,
+  ChevronRight,
   Headphones,
   Minus,
   Pause,
   Play,
+  Plus,
   RotateCcw,
-  ScrollText,
-  Settings2,
+  SkipBack,
+  SkipForward,
   Square,
-  Waves,
 } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 interface TTSPageProps {
@@ -28,6 +35,8 @@ interface TTSPageProps {
   totalPages: number;
   sourceLabel: string;
   continuousEnabled: boolean;
+  currentChunkIndex?: number;
+  totalChunks?: number;
   onClose: () => void;
   onReplay: () => void | Promise<void>;
   onPlayPause: () => void | Promise<void>;
@@ -35,6 +44,9 @@ interface TTSPageProps {
   onAdjustRate: (delta: number) => void;
   onAdjustPitch: (delta: number) => void;
   onToggleContinuous: () => void;
+  onUpdateConfig?: (updates: Partial<TTSConfig>) => void;
+  onPrevChapter?: () => void | Promise<void>;
+  onNextChapter?: () => void | Promise<void>;
 }
 
 function clampProgress(progress: number) {
@@ -54,6 +66,8 @@ export function TTSPage({
   totalPages,
   sourceLabel,
   continuousEnabled,
+  currentChunkIndex = 0,
+  totalChunks = 0,
   onClose,
   onReplay,
   onPlayPause,
@@ -61,16 +75,22 @@ export function TTSPage({
   onAdjustRate,
   onAdjustPitch,
   onToggleContinuous,
+  onUpdateConfig,
+  onPrevChapter,
+  onNextChapter,
 }: TTSPageProps) {
   const { t } = useTranslation();
+  const [voicePickerOpen, setVoicePickerOpen] = useState(false);
+  const voiceAnchorRef = useRef<HTMLButtonElement>(null);
 
   const { currentExcerpt, nextExcerpt, supportingExcerpt } = useMemo(
-    () => buildNarrationPreview(currentText),
-    [currentText],
+    () => buildNarrationPreview(currentText, currentChunkIndex),
+    [currentText, currentChunkIndex],
   );
 
   const progressPct = clampProgress(readingProgress);
   const voiceLabel = getTTSVoiceLabel(config);
+
   const statusLabel =
     playState === "loading"
       ? t("tts.loading")
@@ -80,310 +100,421 @@ export function TTSPage({
           ? t("tts.paused")
           : t("tts.stopped");
 
+  const isPlaying = playState === "playing";
+  const isLoading = playState === "loading";
+
   if (!visible) return null;
 
   return (
-    <div className="absolute inset-0 z-[65] bg-background/96 backdrop-blur-md">
-      <div className="mx-auto flex h-full w-full max-w-[1440px] flex-col px-8 py-7">
-        <div className="mb-6 flex items-center justify-between">
-          <button
-            type="button"
-            className="inline-flex h-11 items-center gap-2 rounded-full border border-border/70 bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-            onClick={onClose}
-          >
-            <ChevronLeft className="h-4 w-4" />
-            {t("tts.returnToReading")}
-          </button>
-          <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary">
-            <Headphones className="h-4 w-4" />
-            {statusLabel}
+    <div className="absolute inset-0 z-[65] flex bg-background">
+
+      {/* ═══════════════════════════════════════════════════════════
+          LEFT PANEL — Cover + album info (Apple Music ~45%)
+      ══════════════════════════════════════════════════════════════ */}
+      <div className="relative flex w-[44%] shrink-0 flex-col items-center justify-center overflow-hidden px-10 py-8">
+
+        {/* Ambient glow behind cover */}
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <div className="h-[55%] w-[70%] rounded-full bg-primary/10 blur-3xl" />
+        </div>
+
+        {/* Cover — BookCard 28:41 style, large */}
+        <div className="relative z-10 w-full max-w-[240px]">
+          <div className="book-cover-shadow relative aspect-[28/41] w-full overflow-hidden rounded-lg">
+            {coverSrc ? (
+              <>
+                <img src={coverSrc} alt={bookTitle} className="h-full w-full object-cover" />
+                <div className="book-spine absolute inset-0 rounded-lg" />
+              </>
+            ) : (
+              <div className="flex h-full w-full flex-col items-center justify-center overflow-hidden rounded-lg bg-gradient-to-b from-stone-100 to-stone-200 p-4">
+                <div className="flex flex-1 items-center justify-center">
+                  <span className="line-clamp-4 text-center font-serif text-base font-medium leading-snug text-stone-500">
+                    {bookTitle || t("reader.untitled")}
+                  </span>
+                </div>
+                <div className="h-px w-8 bg-stone-300/60" />
+                {chapterTitle && (
+                  <div className="flex h-1/4 items-center justify-center">
+                    <span className="line-clamp-1 text-center font-serif text-xs text-stone-400">
+                      {chapterTitle}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            {/* Progress strip at bottom of cover */}
+            {progressPct > 0 && progressPct < 100 && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-black/10">
+                <div
+                  className="h-full bg-primary/80 transition-all"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-[300px_minmax(0,1fr)_320px] gap-6">
-          <aside className="flex min-h-0 flex-col rounded-[32px] border border-border/60 bg-card/90 p-5">
-            <div className="mb-5 aspect-[3/4] overflow-hidden rounded-[26px] bg-muted">
-              {coverSrc ? (
-                <img src={coverSrc} alt={bookTitle} className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full w-full items-end bg-gradient-to-br from-primary/10 via-background to-primary/5 p-6">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary/70">
-                      ReadAny TTS
-                    </p>
-                    <h2 className="mt-3 text-2xl font-semibold leading-tight text-foreground">
-                      {bookTitle || t("reader.untitled")}
-                    </h2>
+        {/* Book title + chapter */}
+        <div className="relative z-10 mt-6 w-full max-w-[240px] text-center">
+          <h1 className="truncate text-lg font-bold leading-snug text-foreground">
+            {bookTitle || t("reader.untitled")}
+          </h1>
+          <p className="mt-1 truncate text-sm text-muted-foreground">
+            {chapterTitle || t("tts.fromCurrentPage")}
+          </p>
+          {sourceLabel && (
+            <p className="mt-0.5 truncate text-[10px] text-muted-foreground/50">{sourceLabel}</p>
+          )}
+
+          {/* Engine + voice chips — click either to open picker */}
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
+            {/* Engine chip — clickable when onUpdateConfig is provided */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => onUpdateConfig && setVoicePickerOpen((p) => !p)}
+                className={`inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors ${onUpdateConfig ? "cursor-pointer hover:bg-primary/10 hover:text-primary" : "cursor-default"}`}
+              >
+                {config.engine === "edge"
+                  ? "Edge TTS"
+                  : config.engine === "dashscope"
+                    ? "DashScope"
+                    : t("tts.browser")}
+                {onUpdateConfig && <ChevronRight className="h-2.5 w-2.5" />}
+              </button>
+            </div>
+            {/* Voice chip — clickable when onUpdateConfig is provided */}
+            <div className="relative">
+              <button
+                ref={voiceAnchorRef}
+                type="button"
+                onClick={() => onUpdateConfig && setVoicePickerOpen((p) => !p)}
+                className={`inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors ${onUpdateConfig ? "cursor-pointer hover:bg-primary/10 hover:text-primary" : "cursor-default"}`}
+              >
+                {voiceLabel}
+                {onUpdateConfig && <ChevronRight className="h-2.5 w-2.5" />}
+              </button>
+
+              {/* Engine + Voice picker dropdown */}
+              {voicePickerOpen && onUpdateConfig && (
+                <>
+                  {/* Backdrop */}
+                  <div
+                    className="fixed inset-0 z-[70]"
+                    onClick={() => setVoicePickerOpen(false)}
+                  />
+                  <div className="absolute bottom-full left-1/2 z-[71] mb-2 max-h-[420px] w-64 -translate-x-1/2 overflow-y-auto rounded-xl border border-border/60 bg-background shadow-xl">
+                    {/* Engine section */}
+                    <div className="sticky top-0 z-10 border-b border-border/30 bg-background/95 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {t("tts.selectEngine")}
+                    </div>
+                    {(["edge", "dashscope", "browser"] as const).map((eng) => {
+                      const isActive = config.engine === eng;
+                      const label =
+                        eng === "edge" ? "Edge TTS" : eng === "dashscope" ? "DashScope" : t("tts.browser");
+                      const desc =
+                        eng === "edge"
+                          ? "Microsoft · 多语言"
+                          : eng === "dashscope"
+                            ? "阿里云通义 · 中文优化"
+                            : "系统内置 · 免费";
+                      return (
+                        <button
+                          key={eng}
+                          type="button"
+                          onClick={() => onUpdateConfig({ engine: eng })}
+                          className={`flex w-full items-center justify-between px-3 py-2.5 text-left transition-colors hover:bg-muted ${isActive ? "bg-primary/5" : ""}`}
+                        >
+                          <span className="flex flex-col">
+                            <span className={`text-xs font-semibold ${isActive ? "text-primary" : "text-foreground"}`}>{label}</span>
+                            <span className="text-[10px] text-muted-foreground/70">{desc}</span>
+                          </span>
+                          {isActive && (
+                            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">✓</span>
+                          )}
+                        </button>
+                      );
+                    })}
+
+                    {/* Voice section */}
+                    {config.engine !== "browser" && (
+                      <div className="sticky top-8 z-10 border-y border-border/30 bg-background/95 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        {t("tts.selectVoice")}
+                      </div>
+                    )}
+                    {config.engine === "dashscope" &&
+                      DASHSCOPE_VOICES.map((v) => (
+                        <button
+                          key={v.id}
+                          type="button"
+                          onClick={() => {
+                            onUpdateConfig({ dashscopeVoice: v.id });
+                            setVoicePickerOpen(false);
+                          }}
+                          className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs transition-colors hover:bg-muted ${config.dashscopeVoice === v.id ? "font-semibold text-primary" : "text-foreground"}`}
+                        >
+                          {v.label}
+                          {config.dashscopeVoice === v.id && (
+                            <span className="text-[11px] font-bold text-primary">✓</span>
+                          )}
+                        </button>
+                      ))}
+                    {config.engine === "edge" &&
+                      (() => {
+                        // Group by language, show zh-* first
+                        const grouped = EDGE_TTS_VOICES.reduce<Record<string, typeof EDGE_TTS_VOICES>>((acc, v) => {
+                          (acc[v.lang] ??= []).push(v);
+                          return acc;
+                        }, {});
+                        const langs = Object.keys(grouped).sort((a, b) => {
+                          const aZh = a.startsWith("zh") ? -1 : 0;
+                          const bZh = b.startsWith("zh") ? -1 : 0;
+                          return aZh - bZh || a.localeCompare(b);
+                        });
+                        return langs.map((lang) => (
+                          <div key={lang}>
+                            <div className="bg-muted/60 px-3 py-1 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+                              {lang}
+                            </div>
+                            {grouped[lang].map((v) => (
+                              <button
+                                key={v.id}
+                                type="button"
+                                onClick={() => {
+                                  onUpdateConfig({ edgeVoice: v.id });
+                                  setVoicePickerOpen(false);
+                                }}
+                                className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs transition-colors hover:bg-muted ${config.edgeVoice === v.id ? "font-semibold text-primary" : "text-foreground"}`}
+                              >
+                                {v.name}
+                                {config.edgeVoice === v.id && (
+                                  <span className="text-[11px] font-bold text-primary">✓</span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        ));
+                      })()}
+                    {config.engine === "browser" && (
+                      <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                        {t("tts.browserVoiceNote")}
+                      </div>
+                    )}
                   </div>
-                </div>
+                </>
               )}
             </div>
-
-            <div className="space-y-3">
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                  {sourceLabel}
-                </p>
-                <h1 className="mt-2 text-2xl font-semibold leading-tight text-foreground">
-                  {bookTitle || t("reader.untitled")}
-                </h1>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  {chapterTitle || t("tts.fromCurrentPage")}
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-foreground">
-                  {config.engine === "edge"
-                    ? "Edge"
-                    : config.engine === "dashscope"
-                      ? "DashScope"
-                      : t("tts.browser")}
-                </span>
-                <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-foreground">
-                  {voiceLabel}
-                </span>
-                <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-foreground">
-                  {t("tts.rateCompact", { rate: config.rate.toFixed(1) })}
-                </span>
-              </div>
-            </div>
-          </aside>
-
-          <main className="flex min-h-0 flex-col gap-6">
-            <section className="rounded-[34px] border border-border/60 bg-card/95 p-7 shadow-[0_24px_60px_rgba(15,23,42,0.06)]">
-              <div className="mb-5 flex items-center justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                    {t("tts.currentlyReading")}
-                  </p>
-                  <h2 className="mt-2 text-3xl font-semibold leading-tight text-foreground">
-                    {currentExcerpt || t("tts.waitingText")}
-                  </h2>
-                </div>
-                <div className="rounded-full bg-primary/10 px-4 py-2 text-sm font-medium text-primary">
-                  {currentPage > 0 && totalPages > 0
-                    ? t("tts.pageProgress", { current: currentPage, total: totalPages })
-                    : t("tts.readingProgress", { progress: progressPct })}
-                </div>
-              </div>
-
-              <p className="max-w-3xl text-base leading-8 text-muted-foreground">
-                {supportingExcerpt || t("tts.keepInSync")}
-              </p>
-
-              <div className="mt-8">
-                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-primary transition-all"
-                    style={{ width: `${progressPct}%` }}
-                  />
-                </div>
-                <div className="mt-3 flex items-center justify-between text-sm text-muted-foreground">
-                  <span>{t("tts.readingProgress", { progress: progressPct })}</span>
-                  <span>{progressPct}%</span>
-                </div>
-              </div>
-
-              <div className="mt-8 flex items-center justify-between">
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-2 rounded-full border border-border/70 px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-                  onClick={onReplay}
-                >
-                  <RotateCcw className="h-4 w-4" />
-                  {t("tts.restartFromHere")}
-                </button>
-
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-border/70 bg-background text-foreground transition-colors hover:bg-muted"
-                    onClick={onStop}
-                  >
-                    <Square className="h-4 w-4 fill-current" />
-                  </button>
-                  <button
-                    type="button"
-                    className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_18px_38px_rgba(35,99,255,0.22)] transition-transform hover:scale-[1.02]"
-                    onClick={onPlayPause}
-                  >
-                    {playState === "playing" ? (
-                      <Pause className="h-6 w-6 fill-current" />
-                    ) : (
-                      <Play className="ml-0.5 h-6 w-6 fill-current" />
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-2 rounded-full border border-border/70 px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-                    onClick={onToggleContinuous}
-                  >
-                    <Bot className="h-4 w-4" />
-                    {continuousEnabled ? t("tts.autoContinuePage") : t("tts.keepPageAligned")}
-                  </button>
-                </div>
-              </div>
-            </section>
-
-            <section className="grid min-h-0 flex-1 grid-cols-[1.25fr_0.95fr] gap-6">
-              <div className="rounded-[30px] border border-border/60 bg-card/90 p-6">
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                  {t("tts.narrationContext")}
-                </p>
-                <div className="mt-5 grid gap-4">
-                  <div className="rounded-[24px] bg-muted/60 p-5">
-                    <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                      {t("tts.justRead")}
-                    </p>
-                    <p className="mt-3 text-sm leading-7 text-muted-foreground">
-                      {supportingExcerpt || t("tts.keepInSync")}
-                    </p>
-                  </div>
-
-                  <div className="rounded-[24px] border border-primary/15 bg-primary/[0.06] p-5">
-                    <p className="text-xs font-medium uppercase tracking-[0.14em] text-primary/70">
-                      {t("tts.currentSentence")}
-                    </p>
-                    <p className="mt-3 text-lg font-medium leading-8 text-foreground">
-                      {currentExcerpt || t("tts.waitingText")}
-                    </p>
-                  </div>
-
-                  <div className="rounded-[24px] bg-muted/60 p-5">
-                    <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                      {t("tts.upcomingSentence")}
-                    </p>
-                    <p className="mt-3 text-sm leading-7 text-muted-foreground">
-                      {nextExcerpt || t("tts.currentPageOnly")}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-6">
-                <section className="rounded-[30px] border border-border/60 bg-card/90 p-6">
-                  <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                    <Settings2 className="h-4 w-4" />
-                    {t("tts.quickSettings")}
-                  </div>
-                  <div className="mt-5 space-y-5">
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <p className="text-sm font-medium text-foreground">{t("tts.rate")}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {t("tts.rateCompact", { rate: config.rate.toFixed(1) })}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border/70 text-foreground transition-colors hover:bg-muted"
-                          onClick={() => onAdjustRate(-0.1)}
-                        >
-                          <Minus className="h-4 w-4" />
-                        </button>
-                        <span className="min-w-[56px] text-center text-sm font-medium text-foreground">
-                          {config.rate.toFixed(1)}x
-                        </span>
-                        <button
-                          type="button"
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border/70 text-foreground transition-colors hover:bg-muted"
-                          onClick={() => onAdjustRate(0.1)}
-                        >
-                          <Play className="h-3.5 w-3.5 rotate-90 fill-current" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <p className="text-sm font-medium text-foreground">{t("tts.pitch")}</p>
-                        <p className="text-xs text-muted-foreground">{config.pitch.toFixed(1)}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border/70 text-foreground transition-colors hover:bg-muted"
-                          onClick={() => onAdjustPitch(-0.1)}
-                        >
-                          <Minus className="h-4 w-4" />
-                        </button>
-                        <span className="min-w-[56px] text-center text-sm font-medium text-foreground">
-                          {config.pitch.toFixed(1)}
-                        </span>
-                        <button
-                          type="button"
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border/70 text-foreground transition-colors hover:bg-muted"
-                          onClick={() => onAdjustPitch(0.1)}
-                        >
-                          <Play className="h-3.5 w-3.5 rotate-90 fill-current" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </section>
-
-                <section className="flex-1 rounded-[30px] border border-border/60 bg-card/90 p-6">
-                  <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                    <Waves className="h-4 w-4" />
-                    {t("tts.upNext")}
-                  </div>
-                  <div className="mt-5 space-y-4">
-                    <div className="rounded-[22px] bg-muted/60 p-4">
-                      <p className="text-sm font-medium text-foreground">{nextExcerpt || t("tts.currentPageOnly")}</p>
-                      <p className="mt-2 text-xs leading-6 text-muted-foreground">
-                        {sourceLabel}
-                      </p>
-                    </div>
-
-                    <div className="rounded-[22px] border border-dashed border-border/70 p-4 text-sm leading-7 text-muted-foreground">
-                      <div className="mb-3 flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                        <ScrollText className="h-4 w-4" />
-                        {t("tts.followHighlight")}
-                      </div>
-                      {supportingExcerpt || t("tts.keepInSync")}
-                    </div>
-                  </div>
-                </section>
-              </div>
-            </section>
-          </main>
-
-          <aside className="flex min-h-0 flex-col gap-6">
-            <section className="rounded-[30px] border border-border/60 bg-card/90 p-6">
-              <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                <Headphones className="h-4 w-4" />
-                {t("tts.listenSpace")}
-              </div>
-              <div className="mt-5 space-y-4 text-sm leading-7 text-muted-foreground">
-                <p>{t("tts.keepInSync")}</p>
-                <p>{t("tts.autoContinuePage")}</p>
-              </div>
-            </section>
-
-            <section className="flex-1 rounded-[30px] border border-border/60 bg-card/90 p-6">
-              <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                <ScrollText className="h-4 w-4" />
-                {t("tts.upNext")}
-              </div>
-              <div className="mt-5 space-y-3">
-                {[currentExcerpt, nextExcerpt, supportingExcerpt].filter(Boolean).map((item, index) => (
-                  <div key={`${item}-${index}`} className="rounded-[20px] bg-muted/60 px-4 py-3">
-                    <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                      {index === 0
-                        ? t("tts.currentSentence")
-                        : index === 1
-                          ? t("tts.upcomingSentence")
-                          : t("tts.justRead")}
-                    </p>
-                    <p className="mt-2 text-sm leading-7 text-foreground">{item}</p>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </aside>
+          </div>
         </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════
+          RIGHT PANEL — Lyrics + controls (56%)
+      ══════════════════════════════════════════════════════════════ */}
+      <div className="flex min-w-0 flex-1 flex-col border-l border-border/30">
+
+        {/* ── Top bar ── */}
+        <header className="flex shrink-0 items-center justify-between px-6 py-4">
+          <button
+            type="button"
+            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border/60 bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+            onClick={onClose}
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+            {t("tts.returnToReading")}
+          </button>
+
+          <div className="flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+            <Headphones className="h-3 w-3" />
+            {statusLabel}
+          </div>
+
+          {/* Page progress badge */}
+          <span className="rounded-full bg-muted px-2.5 py-1 text-[10px] font-medium tabular-nums text-muted-foreground">
+            {currentPage > 0 && totalPages > 0
+              ? t("tts.pageProgress", { current: currentPage, total: totalPages })
+              : `${progressPct}%`}
+          </span>
+        </header>
+
+        {/* ── Lyrics — Apple Music karaoke style ── */}
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 overflow-hidden px-10">
+
+          {/* Previous line — dimmed */}
+          {supportingExcerpt ? (
+            <p className="line-clamp-2 shrink-0 text-center text-sm font-medium leading-6 text-foreground/40">
+              {supportingExcerpt}
+            </p>
+          ) : (
+            <div className="h-6 shrink-0" />
+          )}
+
+          {/* Active line — hero, large, bold; scrollable when text overflows */}
+          <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <p className="text-center text-2xl font-bold leading-relaxed text-foreground">
+              {currentExcerpt || t("tts.waitingText")}
+            </p>
+          </div>
+
+          {/* Next line — dimmed */}
+          {nextExcerpt ? (
+            <p className="line-clamp-2 shrink-0 text-center text-sm font-medium leading-6 text-foreground/40">
+              {nextExcerpt}
+            </p>
+          ) : (
+            <div className="h-6 shrink-0" />
+          )}
+        </div>
+
+        {/* ── Progress bar ── */}
+        <div className="shrink-0 px-10 pb-3">
+          <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-primary transition-[width] duration-500"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+          <div className="mt-1.5 flex items-center justify-between text-[10px] text-muted-foreground">
+            <span>{t("tts.readingProgress", { progress: progressPct })}</span>
+            <span className="tabular-nums">
+              {totalChunks > 0
+                ? `${currentChunkIndex + 1} / ${totalChunks}`
+                : `${progressPct}%`}
+            </span>
+          </div>
+        </div>
+
+        {/* ── Transport controls ── */}
+        <div className="flex shrink-0 items-center justify-center gap-3 pb-5">
+          {/* Prev chapter */}
+          <button
+            type="button"
+            className={`inline-flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-background text-foreground transition-colors hover:bg-muted ${!onPrevChapter ? "cursor-not-allowed opacity-30" : ""}`}
+            onClick={onPrevChapter}
+            disabled={!onPrevChapter}
+            aria-label={t("tts.prevChapter")}
+          >
+            <SkipBack className="h-4 w-4" />
+          </button>
+
+          {/* Replay */}
+          <button
+            type="button"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-background text-foreground transition-colors hover:bg-muted"
+            onClick={onReplay}
+            aria-label={t("tts.restartFromHere")}
+          >
+            <RotateCcw className="h-4 w-4" />
+          </button>
+
+          {/* Play / Pause — primary */}
+          <button
+            type="button"
+            className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 transition-transform hover:scale-[1.04] active:scale-[0.97]"
+            onClick={onPlayPause}
+            aria-label={isPlaying ? t("tts.paused") : t("tts.playing")}
+          >
+            {isLoading ? (
+              <span className="h-5 w-5 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground" />
+            ) : isPlaying ? (
+              <Pause className="h-6 w-6 fill-current" />
+            ) : (
+              <Play className="ml-0.5 h-6 w-6 fill-current" />
+            )}
+          </button>
+
+          {/* Stop */}
+          <button
+            type="button"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-background text-foreground transition-colors hover:bg-muted"
+            onClick={onStop}
+            aria-label={t("common.stop")}
+          >
+            <Square className="h-4 w-4 fill-current" />
+          </button>
+
+          {/* Next chapter */}
+          <button
+            type="button"
+            className={`inline-flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-background text-foreground transition-colors hover:bg-muted ${!onNextChapter ? "cursor-not-allowed opacity-30" : ""}`}
+            onClick={onNextChapter}
+            disabled={!onNextChapter}
+            aria-label={t("tts.nextChapter")}
+          >
+            <SkipForward className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* ── Settings: rate + pitch + continuous ── */}
+        <div className="flex shrink-0 items-center justify-center gap-0 rounded-none border-t border-border/30 bg-muted/30 px-6 py-3">
+
+          {/* Rate */}
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-medium text-muted-foreground">{t("tts.rate")}</span>
+            <button
+              type="button"
+              className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-border/60 text-foreground transition-colors hover:bg-muted"
+              onClick={() => onAdjustRate(-0.1)}
+              aria-label="Decrease rate"
+            >
+              <Minus className="h-2.5 w-2.5" />
+            </button>
+            <span className="min-w-[36px] text-center text-xs font-semibold tabular-nums text-foreground">
+              {config.rate.toFixed(1)}x
+            </span>
+            <button
+              type="button"
+              className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-border/60 text-foreground transition-colors hover:bg-muted"
+              onClick={() => onAdjustRate(0.1)}
+              aria-label="Increase rate"
+            >
+              <Plus className="h-2.5 w-2.5" />
+            </button>
+          </div>
+
+          <div className="mx-4 h-4 w-px bg-border/50" />
+
+          {/* Pitch */}
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-medium text-muted-foreground">{t("tts.pitch")}</span>
+            <button
+              type="button"
+              className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-border/60 text-foreground transition-colors hover:bg-muted"
+              onClick={() => onAdjustPitch(-0.1)}
+              aria-label="Decrease pitch"
+            >
+              <Minus className="h-2.5 w-2.5" />
+            </button>
+            <span className="min-w-[32px] text-center text-xs font-semibold tabular-nums text-foreground">
+              {config.pitch.toFixed(1)}
+            </span>
+            <button
+              type="button"
+              className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-border/60 text-foreground transition-colors hover:bg-muted"
+              onClick={() => onAdjustPitch(0.1)}
+              aria-label="Increase pitch"
+            >
+              <Plus className="h-2.5 w-2.5" />
+            </button>
+          </div>
+
+          <div className="mx-4 h-4 w-px bg-border/50" />
+
+          {/* Continuous toggle */}
+          <button
+            type="button"
+            onClick={onToggleContinuous}
+            className={`rounded-full border px-3 py-1 text-[10px] font-semibold transition-colors ${
+              continuousEnabled
+                ? "border-primary/30 bg-primary/10 text-primary"
+                : "border-border/60 bg-background text-muted-foreground hover:bg-muted"
+            }`}
+          >
+            {continuousEnabled ? t("tts.autoContinuePage") : t("tts.keepPageAligned")}
+          </button>
+        </div>
+
       </div>
     </div>
   );

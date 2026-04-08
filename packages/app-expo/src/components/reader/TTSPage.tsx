@@ -3,20 +3,22 @@ import {
   HeadphonesIcon,
   MinusIcon,
   PlusIcon,
-  ScrollTextIcon,
-  WrenchIcon,
 } from "@/components/ui/Icon";
-import { type ThemeColors, fontSize, fontWeight, useColors, withOpacity } from "@/styles/theme";
+import { type ThemeColors, fontWeight, radius, useColors, withOpacity } from "@/styles/theme";
 import {
   buildNarrationPreview,
+  DASHSCOPE_VOICES,
+  EDGE_TTS_VOICES,
   type TTSConfig,
   type TTSPlayState,
   getTTSVoiceLabel,
 } from "@readany/core/tts";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
+  Animated,
+  Dimensions,
   Image,
   Modal,
   Pressable,
@@ -28,6 +30,17 @@ import {
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
 
+// ── Dimensions ────────────────────────────────────────────────────────────────
+const { height: SH, width: SW } = Dimensions.get("window");
+// Full-size cover — 28:41 book aspect ratio
+const COVER_H = Math.round(SH * 0.375);
+const COVER_W = Math.round(COVER_H * (28 / 41));
+// Thumbnail for lyrics header
+const THUMB_W = 48;
+const THUMB_H = Math.round(THUMB_W * (41 / 28)); // ≈ 70
+
+// ── Inline SVG icons ──────────────────────────────────────────────────────────
+
 function PlayIcon({ size = 28, color = "#fff" }: { size?: number; color?: string }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
@@ -36,7 +49,7 @@ function PlayIcon({ size = 28, color = "#fff" }: { size?: number; color?: string
   );
 }
 
-function PauseIcon({ size = 24, color = "#fff" }: { size?: number; color?: string }) {
+function PauseIcon({ size = 26, color = "#fff" }: { size?: number; color?: string }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
       <Path d="M6 4h4v16H6zM14 4h4v16h-4z" />
@@ -44,7 +57,7 @@ function PauseIcon({ size = 24, color = "#fff" }: { size?: number; color?: strin
   );
 }
 
-function StopIcon({ size = 18, color = "#151515" }: { size?: number; color?: string }) {
+function StopIcon({ size = 20, color }: { size?: number; color: string }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
       <Path d="M6 6h12v12H6z" />
@@ -52,23 +65,250 @@ function StopIcon({ size = 18, color = "#151515" }: { size?: number; color?: str
   );
 }
 
-function ReplayIcon({ size = 20, color = "#151515" }: { size?: number; color?: string }) {
+/** Replay — curved arrow wrapping a filled play tip; means "restart here" */
+function ReplayIcon({ size = 22, color }: { size?: number; color: string }) {
   return (
-    <Svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <Path d="M3 2v6h6" />
-      <Path d="M3 8a9 9 0 1 0 2.64-6.36L3 4" />
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      {/* Arc from ~4 o'clock back up to ~10 o'clock (counter-clockwise, ≈ 240°) */}
+      <Path
+        d="M12 5 A7 7 0 1 0 18.5 15.5"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+        fill="none"
+      />
+      {/* Arrow head pointing back to ~10 o'clock */}
+      <Path
+        d="M12 2 L12 8 L7.5 5 Z"
+        fill={color}
+      />
     </Svg>
   );
 }
+
+/** Skip to previous chapter */
+function SkipBackIcon({ size = 20, color }: { size?: number; color: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+      {/* Vertical bar on left */}
+      <Path d="M6 4h2v16H6z" />
+      {/* Left-pointing filled triangle */}
+      <Path d="M18 5 L8 12 L18 19 Z" />
+    </Svg>
+  );
+}
+
+/** Skip to next chapter */
+function SkipForwardIcon({ size = 20, color }: { size?: number; color: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+      {/* Right-pointing filled triangle */}
+      <Path d="M6 5 L16 12 L6 19 Z" />
+      {/* Vertical bar on right */}
+      <Path d="M16 4h2v16h-2z" />
+    </Svg>
+  );
+}
+
+// ── BookCoverImage — pure render helper ───────────────────────────────────────
+
+interface BookCoverImageProps {
+  coverUri?: string;
+  bookTitle: string;
+  chapterTitle: string;
+  width: number;
+  height: number;
+  borderRadius: number;
+  pct: number;
+  colors: ThemeColors;
+  t: (key: string) => string;
+}
+
+function BookCoverImage({
+  coverUri,
+  bookTitle,
+  chapterTitle,
+  width,
+  height,
+  borderRadius,
+  pct,
+  colors,
+  t,
+}: BookCoverImageProps) {
+  const showStrip = pct > 0 && pct < 100;
+  const fontSize = Math.max(8, Math.round(width * 0.055));
+  const subFontSize = Math.max(7, Math.round(width * 0.042));
+
+  return (
+    <View
+      style={{
+        width,
+        height,
+        borderRadius,
+        overflow: "hidden",
+        backgroundColor: colors.muted,
+      }}
+    >
+      {coverUri ? (
+        <>
+          {/* Cover image */}
+          <Image
+            source={{ uri: coverUri }}
+            style={StyleSheet.absoluteFillObject}
+            resizeMode="cover"
+          />
+          {/* Realistic book-spine gradient overlay */}
+          <View
+            style={[StyleSheet.absoluteFillObject, { flexDirection: "row" }]}
+            pointerEvents="none"
+          >
+            <View style={{ width: "6%", height: "100%", backgroundColor: "rgba(0,0,0,0.10)" }} />
+            <View
+              style={{ width: "8%", height: "100%", backgroundColor: "rgba(20,20,20,0.20)" }}
+            />
+            <View
+              style={{
+                width: "5%",
+                height: "100%",
+                backgroundColor: "rgba(240,240,240,0.40)",
+              }}
+            />
+            <View
+              style={{
+                width: "18%",
+                height: "100%",
+                backgroundColor: "rgba(215,215,215,0.35)",
+              }}
+            />
+            <View
+              style={{ flex: 1, height: "100%", backgroundColor: "rgba(100,100,100,0.10)" }}
+            />
+          </View>
+          {/* Top highlight */}
+          <View
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              height: "3%",
+              backgroundColor: "rgba(240,240,240,0.15)",
+            }}
+            pointerEvents="none"
+          />
+          {/* Bottom shadow */}
+          <View
+            style={{
+              position: "absolute",
+              bottom: showStrip ? 2 : 0,
+              left: 0,
+              right: 0,
+              height: "8%",
+              backgroundColor: "rgba(15,15,15,0.15)",
+            }}
+            pointerEvents="none"
+          />
+        </>
+      ) : (
+        /* Fallback: serif gradient — mirrors BookCard style */
+        <View style={{ flex: 1, overflow: "hidden" }}>
+          <View
+            style={{
+              position: "absolute",
+              inset: 0,
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: colors.stone100,
+            }}
+          />
+          <View
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: "50%",
+              backgroundColor: colors.stone200,
+            }}
+          />
+          <View
+            style={{
+              flex: 1,
+              padding: Math.max(6, width * 0.07),
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1,
+            }}
+          >
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+              <Text
+                style={{
+                  textAlign: "center",
+                  fontSize,
+                  fontWeight: fontWeight.medium,
+                  fontFamily: "serif",
+                  color: colors.stone500,
+                  lineHeight: Math.round(fontSize * 1.45),
+                }}
+                numberOfLines={4}
+              >
+                {bookTitle || t("reader.untitled")}
+              </Text>
+            </View>
+            <View
+              style={{
+                width: Math.round(width * 0.28),
+                height: 1,
+                backgroundColor: `${colors.stone300}99`,
+                marginVertical: 5,
+              }}
+            />
+            <View style={{ height: "22%", alignItems: "center", justifyContent: "center" }}>
+              <Text
+                style={{
+                  textAlign: "center",
+                  fontSize: subFontSize,
+                  fontFamily: "serif",
+                  color: colors.stone400,
+                }}
+                numberOfLines={1}
+              >
+                {chapterTitle}
+              </Text>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Reading progress strip at bottom edge */}
+      {showStrip && (
+        <View
+          style={{
+            position: "absolute",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: 2,
+            backgroundColor: "rgba(0,0,0,0.1)",
+          }}
+        >
+          <View
+            style={{
+              height: "100%" as unknown as number,
+              width: `${pct}%` as unknown as number,
+              backgroundColor: colors.primary,
+              opacity: 0.9,
+            }}
+          />
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ── Props ─────────────────────────────────────────────────────────────────────
 
 interface TTSPageProps {
   visible: boolean;
@@ -83,6 +323,8 @@ interface TTSPageProps {
   totalPages: number;
   sourceLabel: string;
   continuousEnabled: boolean;
+  currentChunkIndex?: number;
+  totalChunks?: number;
   onClose: () => void;
   onReplay: () => void | Promise<void>;
   onPlayPause: () => void | Promise<void>;
@@ -90,11 +332,16 @@ interface TTSPageProps {
   onAdjustRate: (delta: number) => void;
   onAdjustPitch: (delta: number) => void;
   onToggleContinuous: () => void;
+  onUpdateConfig?: (updates: Partial<TTSConfig>) => void;
+  onPrevChapter?: () => void | Promise<void>;
+  onNextChapter?: () => void | Promise<void>;
 }
 
-function clampProgress(progress: number) {
-  return Math.max(0, Math.min(100, Math.round(progress * 100)));
+function clampPct(p: number) {
+  return Math.max(0, Math.min(100, Math.round(p * 100)));
 }
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export function TTSPage({
   visible,
@@ -107,8 +354,9 @@ export function TTSPage({
   readingProgress,
   currentPage,
   totalPages,
-  sourceLabel,
   continuousEnabled,
+  currentChunkIndex = 0,
+  totalChunks = 0,
   onClose,
   onReplay,
   onPlayPause,
@@ -116,527 +364,1139 @@ export function TTSPage({
   onAdjustRate,
   onAdjustPitch,
   onToggleContinuous,
+  onUpdateConfig,
+  onPrevChapter,
+  onNextChapter,
 }: TTSPageProps) {
   const colors = useColors();
   const { t } = useTranslation();
-  const s = makeStyles(colors);
-  const [showSettings, setShowSettings] = useState(false);
+  const [voicePickerVisible, setVoicePickerVisible] = useState(false);
+
+  // Native horizontal paging ScrollView ref — no JS animation needed
+  const scrollRef = useRef<ScrollView>(null);
+
+  // 1.0 = playing (full size), 0.95 = paused (slightly contracted)
+  const playScaleAnim = useRef(new Animated.Value(1)).current;
+  // Tracks horizontal scroll offset — drives animated page-indicator pill
+  const scrollX = useRef(new Animated.Value(0)).current;
 
   const { currentExcerpt, nextExcerpt, supportingExcerpt } = useMemo(
-    () => buildNarrationPreview(currentText),
-    [currentText],
+    () => buildNarrationPreview(currentText, currentChunkIndex),
+    [currentText, currentChunkIndex],
   );
 
-  const progressPct = clampProgress(readingProgress);
-  const currentVoice = getTTSVoiceLabel(config);
+  const pct = clampPct(readingProgress);
+  const voiceLabel = getTTSVoiceLabel(config);
+  const isPlaying = playState === "playing";
+  const isLoading = playState === "loading";
+
   const stateLabel =
     playState === "loading"
-      ? t("tts.loading", "加载中")
+      ? t("tts.loading")
       : playState === "playing"
-        ? t("tts.playing", "正在播放")
+        ? t("tts.playing")
         : playState === "paused"
-          ? t("tts.paused", "已暂停")
-          : t("tts.stopped", "已停止");
+          ? t("tts.paused")
+          : t("tts.stopped");
 
-  const pageProgressLabel =
+  const pageLabel =
     currentPage > 0 && totalPages > 0
-      ? t("tts.pageProgress", "第 {{current}} / {{total}} 页", {
-          current: currentPage,
-          total: totalPages,
-        })
-      : t("tts.readingProgress", "阅读进度 {{progress}}%", { progress: progressPct });
+      ? t("tts.pageProgress", { current: currentPage, total: totalPages })
+      : `${pct}%`;
+
+  const engineLabel =
+    config.engine === "edge"
+      ? "Edge TTS"
+      : config.engine === "dashscope"
+        ? "DashScope"
+        : t("tts.browser");
+
+  // ── Play/pause cover pulse ─────────────────────────────────────────────────
+  useEffect(() => {
+    Animated.spring(playScaleAnim, {
+      toValue: isPlaying ? 1.0 : 0.95,
+      tension: 120,
+      friction: 14,
+      useNativeDriver: true,
+    }).start();
+  }, [isPlaying, playScaleAnim]);
+
+  // ── PanResponder listener removed — replaced by native ScrollView paging ──
+
+  const s = makeStyles(colors);
+
+  // ── Shared UI blocks ───────────────────────────────────────────────────────
+
+  const progressBarJSX = (
+    <View style={s.progress}>
+      <View style={s.progressTrack}>
+        <View style={[s.progressFill, { width: `${pct}%` as unknown as number }]} />
+      </View>
+      <View style={s.progressRow}>
+        <Text style={s.progressTxt}>{pageLabel}</Text>
+        <Text style={s.progressTxt}>
+          {totalChunks > 0 ? `${currentChunkIndex + 1} / ${totalChunks}` : `${pct}%`}
+        </Text>
+      </View>
+    </View>
+  );
+
+  const controlsJSX = (
+    <View style={s.controls}>
+      {/* Prev chapter */}
+      <Pressable
+        style={({ pressed }) => [s.ctrlBtnSm, pressed && { opacity: 0.5 }, !onPrevChapter && s.ctrlBtnDisabled]}
+        onPress={onPrevChapter}
+        hitSlop={12}
+        disabled={!onPrevChapter}
+        accessibilityLabel={t("tts.prevChapter")}
+      >
+        <SkipBackIcon size={18} color={onPrevChapter ? colors.foreground : colors.mutedForeground} />
+      </Pressable>
+
+      <Pressable
+        style={({ pressed }) => [s.ctrlBtn, pressed && { opacity: 0.5 }]}
+        onPress={onReplay}
+        hitSlop={14}
+        accessibilityLabel={t("tts.restartFromHere")}
+      >
+        <ReplayIcon size={20} color={colors.foreground} />
+      </Pressable>
+
+      <TouchableOpacity
+        style={s.playBtn}
+        onPress={onPlayPause}
+        activeOpacity={0.85}
+        accessibilityLabel={isPlaying ? t("tts.paused") : t("tts.playing")}
+      >
+        {isLoading ? (
+          <ActivityIndicator size="large" color={colors.primaryForeground} />
+        ) : isPlaying ? (
+          <PauseIcon size={28} color={colors.primaryForeground} />
+        ) : (
+          <PlayIcon size={30} color={colors.primaryForeground} />
+        )}
+      </TouchableOpacity>
+
+      <Pressable
+        style={({ pressed }) => [s.ctrlBtn, pressed && { opacity: 0.5 }]}
+        onPress={onStop}
+        hitSlop={14}
+        accessibilityLabel={t("common.stop")}
+      >
+        <StopIcon size={20} color={colors.foreground} />
+      </Pressable>
+
+      {/* Next chapter */}
+      <Pressable
+        style={({ pressed }) => [s.ctrlBtnSm, pressed && { opacity: 0.5 }, !onNextChapter && s.ctrlBtnDisabled]}
+        onPress={onNextChapter}
+        hitSlop={12}
+        disabled={!onNextChapter}
+        accessibilityLabel={t("tts.nextChapter")}
+      >
+        <SkipForwardIcon size={18} color={onNextChapter ? colors.foreground : colors.mutedForeground} />
+      </Pressable>
+    </View>
+  );
+
+  const settingsJSX = (
+    <View style={s.settings}>
+      {/* Rate stepper */}
+      <View style={s.settingGroup}>
+        <Text style={s.settingLbl}>{t("tts.rate")}</Text>
+        <View style={s.stepper}>
+          <Pressable style={s.stepBtn} onPress={() => onAdjustRate(-0.1)} hitSlop={12}>
+            <MinusIcon size={10} color={colors.foreground} />
+          </Pressable>
+          <Text style={s.stepVal}>{config.rate.toFixed(1)}x</Text>
+          <Pressable style={s.stepBtn} onPress={() => onAdjustRate(0.1)} hitSlop={12}>
+            <PlusIcon size={10} color={colors.foreground} />
+          </Pressable>
+        </View>
+      </View>
+
+      <View style={s.settingDiv} />
+
+      {/* Pitch stepper */}
+      <View style={s.settingGroup}>
+        <Text style={s.settingLbl}>{t("tts.pitch")}</Text>
+        <View style={s.stepper}>
+          <Pressable style={s.stepBtn} onPress={() => onAdjustPitch(-0.1)} hitSlop={12}>
+            <MinusIcon size={10} color={colors.foreground} />
+          </Pressable>
+          <Text style={s.stepVal}>{config.pitch.toFixed(1)}</Text>
+          <Pressable style={s.stepBtn} onPress={() => onAdjustPitch(0.1)} hitSlop={12}>
+            <PlusIcon size={10} color={colors.foreground} />
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
+
+  const chipsJSX = (
+    <View style={s.chips}>
+      {/* Engine chip — tappable if onUpdateConfig is provided */}
+      <TouchableOpacity
+        style={s.chip}
+        onPress={() => onUpdateConfig && setVoicePickerVisible(true)}
+        activeOpacity={onUpdateConfig ? 0.7 : 1}
+        disabled={!onUpdateConfig}
+      >
+        <Text style={[s.chipTxt, onUpdateConfig ? { color: colors.primary } : null]} numberOfLines={1}>
+          {engineLabel}
+          {onUpdateConfig ? " ›" : ""}
+        </Text>
+      </TouchableOpacity>
+      {/* Voice chip — tappable if onUpdateConfig is provided */}
+      <TouchableOpacity
+        style={s.chip}
+        onPress={() => onUpdateConfig && setVoicePickerVisible(true)}
+        activeOpacity={onUpdateConfig ? 0.7 : 1}
+        disabled={!onUpdateConfig}
+      >
+        <Text style={[s.chipTxt, onUpdateConfig ? { color: colors.primary } : null]} numberOfLines={1}>
+          {voiceLabel}
+          {onUpdateConfig ? " ›" : ""}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  const bottomStripJSX = (
+    <View style={s.bottomStrip}>
+      {/* Continuous toggle — left side */}
+      <TouchableOpacity
+        style={[s.contBtn, continuousEnabled && s.contBtnOn]}
+        onPress={onToggleContinuous}
+        activeOpacity={0.8}
+      >
+        <Text style={[s.contBtnTxt, continuousEnabled && s.contBtnTxtOn]}>
+          {continuousEnabled ? t("tts.autoContinuePage") : t("tts.keepPageAligned")}
+        </Text>
+      </TouchableOpacity>
+
+      {/* Engine + voice chips — right side */}
+      {chipsJSX}
+    </View>
+  );
+
+  // ── Animated page-indicator (pill slides between two dots) ───────────────────
+  // DOT_GAP = dot width (6) + gap (5) = 11 → pill translates over the two dots
+  const DOT_GAP = 11;
+  // Page 0: pill on left dot  → translateX = 0
+  // Page 1: pill on right dot → translateX = DOT_GAP
+  const pillTranslateX = scrollX.interpolate({
+    inputRange: [0, SW],
+    outputRange: [0, DOT_GAP],
+    extrapolate: "clamp",
+  });
+  // Left dot dims as pill leaves it (page 0→1)
+  const dot0Opacity = scrollX.interpolate({
+    inputRange: [0, SW],
+    outputRange: [1, 0.65],
+    extrapolate: "clamp",
+  });
+  // Right dot dims as pill leaves it (page 1→0)
+  const dot1Opacity = scrollX.interpolate({
+    inputRange: [0, SW],
+    outputRange: [0.65, 1],
+    extrapolate: "clamp",
+  });
+  // pill width morphs: 18 → 6 mid-swipe → 18 to show the squish-stretch feel
+  const pillWidth = scrollX.interpolate({
+    inputRange: [0, SW * 0.5, SW],
+    outputRange: [18, 8, 18],
+    extrapolate: "clamp",
+  });
+
+  const pageIndicatorJSX = (
+    <View style={s.iconBtn}>
+      {/*
+       * Container width = PILL_W(18) + GAP(5) + DOT(6) = 29px
+       * Dot centers are at x=9 (pill center on page 0) and x=9+11=20.
+       * Both dots are absolutely positioned so they're always visible
+       * behind the pill regardless of pill width.
+       */}
+      <View style={s.pageIndicator}>
+        {/* Left dot — behind pill on page 0 */}
+        <Animated.View style={[s.dot, s.dotAbs, { left: 6, opacity: dot0Opacity }]} />
+        {/* Right dot — behind pill on page 1 */}
+        <Animated.View style={[s.dot, s.dotAbs, { left: 17, opacity: dot1Opacity }]} />
+        {/* Animated pill floats above the dots */}
+        <Animated.View
+          style={[
+            s.dotPill,
+            {
+              width: pillWidth,
+              transform: [{ translateX: pillTranslateX }],
+            },
+          ]}
+        />
+      </View>
+    </View>
+  );
+
+  // ── Top bar — fixed above the pager ────────────────────────────────────────
+
+  const topBarJSX = (
+    <View style={s.topBar}>
+      <TouchableOpacity style={s.iconBtn} onPress={onClose} activeOpacity={0.7}>
+        <ChevronDownIcon size={22} color={colors.mutedForeground} />
+      </TouchableOpacity>
+      <View style={s.statusPill}>
+        <HeadphonesIcon size={10} color={colors.primary} />
+        <Text style={s.statusTxt}>{stateLabel}</Text>
+      </View>
+      {pageIndicatorJSX}
+    </View>
+  );
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="fullScreen">
-      <View style={s.container}>
-        <TouchableOpacity style={s.closeButton} onPress={onClose} activeOpacity={0.82}>
-          <ChevronDownIcon size={22} color={colors.foreground} />
-        </TouchableOpacity>
+      <View style={s.screen}>
+        {/* Top bar is fixed — outside the horizontal pager */}
+        {topBarJSX}
 
-        <View style={s.statusChip}>
-          <HeadphonesIcon size={14} color={colors.primary} />
-          <Text style={s.statusChipText}>{stateLabel}</Text>
-        </View>
-
+        {/*
+         * Native horizontal paging — each child is exactly SW wide.
+         * The OS handles all gesture arbitration: vertical scrolls inside
+         * child Views are not confused with the horizontal page-swipe.
+         * decelerationRate="fast" gives the same snap feel as Apple Music.
+         */}
         <ScrollView
-          style={s.scroll}
-          contentContainerStyle={s.scrollContent}
-          showsVerticalScrollIndicator={false}
+          ref={scrollRef}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          decelerationRate="fast"
+          bounces={false}
+          scrollEventThrottle={16}
+          style={s.pager}
+          contentContainerStyle={s.pagerContent}
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+            { useNativeDriver: false },
+          )}
         >
-          <View style={s.hero}>
-            <View style={s.coverCard}>
-              {coverUri ? (
-                <Image source={{ uri: coverUri }} style={s.coverImage} resizeMode="cover" />
-              ) : (
-                <View style={s.coverFallback}>
-                  <Text style={s.coverFallbackEyebrow}>ReadAny</Text>
-                  <Text style={s.coverFallbackTitle}>
-                    {bookTitle || t("reader.untitled", "未命名")}
-                  </Text>
+
+          {/* ══════════════════════════════════════════════════════════════
+              PAGE 0 — COVER VIEW  (Spotify Now Playing / Apple Music)
+          ══════════════════════════════════════════════════════════════ */}
+          <View style={s.page}>
+
+            {/* Album art — animated scale pulse on play/pause */}
+            <View style={s.coverSection}>
+              {/* Ambient glow: shadow only — no background fill */}
+              <View style={s.glow} />
+              <Animated.View style={{ transform: [{ scale: playScaleAnim }] }}>
+                <View style={s.coverShadow}>
+                  <BookCoverImage
+                    coverUri={coverUri}
+                    bookTitle={bookTitle}
+                    chapterTitle={chapterTitle}
+                    width={COVER_W}
+                    height={COVER_H}
+                    borderRadius={radius.md}
+                    pct={pct}
+                    colors={colors}
+                    t={t}
+                  />
                 </View>
-              )}
+              </Animated.View>
             </View>
 
-            <View style={s.titleBlock}>
-              <Text style={s.bookTitle}>{bookTitle || t("reader.untitled", "未命名")}</Text>
-              <Text style={s.chapterTitle}>
-                {chapterTitle || t("tts.fromCurrentPage", "从当前页开始")}
+            {/* Book title + chapter */}
+            <View style={s.bookInfo}>
+              <Text style={s.bookTitle} numberOfLines={1}>
+                {bookTitle || t("reader.untitled")}
               </Text>
-              <Text style={s.sourceText}>{sourceLabel}</Text>
+              <Text style={s.bookChapter} numberOfLines={1}>
+                {chapterTitle || t("tts.fromCurrentPage")}
+              </Text>
             </View>
 
-            <View style={s.metaRow}>
-              <View style={s.metaItem}>
-                <Text style={s.metaLabel}>{t("tts.voice", "语音")}</Text>
-                <Text style={s.metaValue}>{currentVoice}</Text>
+            {progressBarJSX}
+            {controlsJSX}
+            {settingsJSX}
+
+            {/* Bottom: continuous toggle + engine/voice chips */}
+            <View style={s.bottom}>
+              {bottomStripJSX}
+            </View>
+          </View>
+
+          {/* ══════════════════════════════════════════════════════════════
+              PAGE 1 — TEXT VIEW  (Apple Music karaoke style)
+          ══════════════════════════════════════════════════════════════ */}
+          <View style={s.page}>
+
+            {/* Thumbnail row: mini cover + book meta */}
+            <View style={s.lyricHeaderRow}>
+              <View style={s.thumbShadowWrap}>
+                <BookCoverImage
+                  coverUri={coverUri}
+                  bookTitle={bookTitle}
+                  chapterTitle={chapterTitle}
+                  width={THUMB_W}
+                  height={THUMB_H}
+                  borderRadius={radius.sm ?? 6}
+                  pct={pct}
+                  colors={colors}
+                  t={t}
+                />
               </View>
-              <View style={s.metaItem}>
-                <Text style={s.metaLabel}>{t("tts.rate", "语速")}</Text>
-                <Text style={s.metaValue}>{config.rate.toFixed(1)}x</Text>
-              </View>
-              <View style={s.metaItem}>
-                <Text style={s.metaLabel}>{t("tts.ttsEngine", "朗读引擎")}</Text>
-                <Text style={s.metaValue}>
-                  {config.engine === "edge"
-                    ? "Edge"
-                    : config.engine === "dashscope"
-                      ? "DashScope"
-                      : t("tts.browser", "系统语音")}
+              <View style={s.lyricHeaderMeta}>
+                <Text style={s.lyricBookName} numberOfLines={2}>
+                  {bookTitle || t("reader.untitled")}
+                </Text>
+                <Text style={s.lyricChapterName} numberOfLines={1}>
+                  {chapterTitle || t("tts.fromCurrentPage")}
                 </Text>
               </View>
             </View>
-          </View>
 
-          <View style={s.excerptCard}>
-            <Text style={s.sectionEyebrow}>{t("tts.currentExcerpt", "当前朗读片段")}</Text>
-            <Text style={s.excerptText}>
-              {currentExcerpt || t("tts.waitingText", "开始播放后，会在这里显示正在朗读的片段。")}
-            </Text>
-            <Text style={s.excerptSubtext}>
-              {supportingExcerpt || t("tts.keepInSync", "朗读会跟随当前阅读位置继续。")}
-            </Text>
-          </View>
-
-          <View style={s.previewRow}>
-            <Text style={s.previewLabel}>{t("tts.nextPreview", "下一段预览")}</Text>
-            <Text style={s.previewText}>
-              {nextExcerpt || t("tts.currentPageOnly", "会继续朗读当前页剩余内容。")}
-            </Text>
-          </View>
-        </ScrollView>
-
-        <View style={s.playerDock}>
-          <View style={s.dockProgressTrack}>
-            <View style={[s.dockProgressFill, { width: `${progressPct}%` }]} />
-          </View>
-
-          <View style={s.dockMetaRow}>
-            <Text style={s.dockMetaText}>{pageProgressLabel}</Text>
-            <Text style={s.dockMetaText}>{progressPct}%</Text>
-          </View>
-
-          <View style={s.controlsRow}>
-            <Pressable style={s.miniAction} onPress={onClose}>
-              <ScrollTextIcon size={22} color={colors.mutedForeground} />
-              <Text style={s.miniActionText}>{t("tts.originalText", "原文")}</Text>
-            </Pressable>
-
-            <Pressable style={s.miniAction} onPress={onReplay}>
-              <ReplayIcon size={20} color={colors.foreground} />
-              <Text style={s.miniActionText}>{t("tts.replay", "重播")}</Text>
-            </Pressable>
-
-            <TouchableOpacity style={s.playButton} onPress={onPlayPause} activeOpacity={0.9}>
-              {playState === "loading" ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : playState === "playing" ? (
-                <PauseIcon />
+            {/* 3-tier text display — active line scrolls if long */}
+            <View style={s.lyricArea}>
+              {supportingExcerpt ? (
+                <Text style={s.lyricFar} numberOfLines={2}>
+                  {supportingExcerpt}
+                </Text>
               ) : (
-                <PlayIcon />
+                <View style={{ height: 24 }} />
               )}
-            </TouchableOpacity>
 
-            <Pressable style={s.miniAction} onPress={onStop}>
-              <StopIcon size={17} color={colors.foreground} />
-              <Text style={s.miniActionText}>{t("common.stop", "停止")}</Text>
-            </Pressable>
+              <ScrollView
+                style={s.lyricActiveScroll}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={s.lyricActiveScrollContent}
+              >
+                <Text style={s.lyricActive}>
+                  {currentExcerpt || t("tts.waitingText")}
+                </Text>
+              </ScrollView>
 
-            <Pressable style={s.miniAction} onPress={() => setShowSettings((prev) => !prev)}>
-              <WrenchIcon size={18} color={colors.mutedForeground} />
-              <Text style={s.miniActionText}>{t("common.settings", "设置")}</Text>
-            </Pressable>
-          </View>
+              {nextExcerpt ? (
+                <Text style={s.lyricNear} numberOfLines={2}>
+                  {nextExcerpt}
+                </Text>
+              ) : (
+                <View style={{ height: 24 }} />
+              )}
+            </View>
 
-          <View style={s.toggleRow}>
-            <TouchableOpacity
-              style={[s.toggleChip, continuousEnabled && s.toggleChipActive]}
-              onPress={onToggleContinuous}
-              activeOpacity={0.88}
-            >
-              <Text style={[s.toggleChipText, continuousEnabled && s.toggleChipTextActive]}>
-                {t("tts.autoContinuePage", "自动继续下一页")}
-              </Text>
-            </TouchableOpacity>
-            <View style={s.secondaryChip}>
-              <Text style={s.secondaryChipText}>{sourceLabel}</Text>
+            {progressBarJSX}
+            {controlsJSX}
+            {settingsJSX}
+
+            {/* Bottom: continuous toggle + engine/voice chips */}
+            <View style={s.bottom}>
+              {bottomStripJSX}
             </View>
           </View>
 
-          {showSettings && (
-            <View style={s.settingsCard}>
-              <View style={s.settingRow}>
-                <Text style={s.settingLabel}>{t("tts.rate", "语速")}</Text>
-                <View style={s.stepper}>
-                  <TouchableOpacity style={s.stepButton} onPress={() => onAdjustRate(-0.1)}>
-                    <MinusIcon size={14} color={colors.foreground} />
-                  </TouchableOpacity>
-                  <Text style={s.stepperValue}>{config.rate.toFixed(1)}x</Text>
-                  <TouchableOpacity style={s.stepButton} onPress={() => onAdjustRate(0.1)}>
-                    <PlusIcon size={14} color={colors.foreground} />
-                  </TouchableOpacity>
-                </View>
-              </View>
+        </ScrollView>
+      </View>
 
-              <View style={s.settingRow}>
-                <Text style={s.settingLabel}>{t("tts.pitch", "音调")}</Text>
-                <View style={s.stepper}>
-                  <TouchableOpacity style={s.stepButton} onPress={() => onAdjustPitch(-0.1)}>
-                    <MinusIcon size={14} color={colors.foreground} />
-                  </TouchableOpacity>
-                  <Text style={s.stepperValue}>{config.pitch.toFixed(1)}</Text>
-                  <TouchableOpacity style={s.stepButton} onPress={() => onAdjustPitch(0.1)}>
-                    <PlusIcon size={14} color={colors.foreground} />
-                  </TouchableOpacity>
-                </View>
-              </View>
+      {/* ── Engine + Voice Picker Modal ────────────────────────────────────── */}
+      <Modal
+        visible={voicePickerVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setVoicePickerVisible(false)}
+      >
+        <Pressable
+          style={s.voicePickerBackdrop}
+          onPress={() => setVoicePickerVisible(false)}
+        />
+        <View style={s.voicePickerSheet}>
+          {/* Handle bar */}
+          <View style={s.voicePickerHandle} />
+
+          {/* Header */}
+          <View style={s.voicePickerHeader}>
+            <Text style={s.voicePickerTitle}>{t("tts.ttsEngine")}</Text>
+          </View>
+
+          {/* Engine selector */}
+          <View style={s.engineSection}>
+            {(["edge", "dashscope", "browser"] as const).map((eng) => {
+              const isActive = config.engine === eng;
+              const label =
+                eng === "edge" ? "Edge TTS" : eng === "dashscope" ? "DashScope" : t("tts.browser");
+              const desc =
+                eng === "edge"
+                  ? "Microsoft · 多语言"
+                  : eng === "dashscope"
+                    ? "阿里云通义 · 中文优化"
+                    : "系统内置 · 免费";
+              return (
+                <TouchableOpacity
+                  key={eng}
+                  style={[s.engineRow, isActive && s.engineRowActive]}
+                  onPress={() => onUpdateConfig?.({ engine: eng })}
+                  activeOpacity={0.7}
+                >
+                  <View style={s.engineRowLeft}>
+                    <Text style={[s.engineRowLabel, isActive && s.engineRowLabelActive]}>
+                      {label}
+                    </Text>
+                    <Text style={s.engineRowDesc}>{desc}</Text>
+                  </View>
+                  {isActive && (
+                    <View style={s.engineCheckmark}>
+                      <Text style={s.engineCheckmarkTxt}>✓</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Divider + voice section title */}
+          {config.engine !== "browser" && (
+            <View style={s.voicePickerHeader}>
+              <Text style={s.voicePickerTitle}>{t("tts.selectVoice")}</Text>
             </View>
           )}
+
+          <ScrollView
+            style={s.voicePickerList}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* DashScope voices */}
+            {config.engine === "dashscope" &&
+              DASHSCOPE_VOICES.map((v) => {
+                const isSelected = config.dashscopeVoice === v.id;
+                return (
+                  <TouchableOpacity
+                    key={v.id}
+                    style={[s.voiceItem, isSelected && s.voiceItemSelected]}
+                    onPress={() => {
+                      onUpdateConfig?.({ dashscopeVoice: v.id });
+                      setVoicePickerVisible(false);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[s.voiceItemTxt, isSelected && s.voiceItemTxtSelected]}>
+                      {v.label}
+                    </Text>
+                    {isSelected && (
+                      <Text style={s.voiceItemCheck}>✓</Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+
+            {/* Edge TTS voices — grouped by language, zh-* first */}
+            {config.engine === "edge" &&
+              (() => {
+                const grouped = EDGE_TTS_VOICES.reduce<Record<string, typeof EDGE_TTS_VOICES>>(
+                  (acc, v) => {
+                    (acc[v.lang] ??= []).push(v);
+                    return acc;
+                  },
+                  {},
+                );
+                const langs = Object.keys(grouped).sort((a, b) => {
+                  const aZh = a.startsWith("zh") ? -1 : 0;
+                  const bZh = b.startsWith("zh") ? -1 : 0;
+                  return aZh - bZh || a.localeCompare(b);
+                });
+                return langs.map((lang) => (
+                  <View key={lang}>
+                    <View style={s.voiceLangHeader}>
+                      <Text style={s.voiceLangTxt}>{lang}</Text>
+                    </View>
+                    {grouped[lang].map((v) => {
+                      const isSelected = config.edgeVoice === v.id;
+                      return (
+                        <TouchableOpacity
+                          key={v.id}
+                          style={[s.voiceItem, isSelected && s.voiceItemSelected]}
+                          onPress={() => {
+                            onUpdateConfig?.({ edgeVoice: v.id });
+                            setVoicePickerVisible(false);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[s.voiceItemTxt, isSelected && s.voiceItemTxtSelected]}>
+                            {v.name}
+                          </Text>
+                          {isSelected && (
+                            <Text style={s.voiceItemCheck}>✓</Text>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ));
+              })()}
+
+            {/* Browser — no selectable voices */}
+            {config.engine === "browser" && (
+              <View style={s.voiceBrowserNote}>
+                <Text style={s.voiceBrowserNoteTxt}>
+                  {t("tts.browserVoiceNote")}
+                </Text>
+              </View>
+            )}
+          </ScrollView>
+
+          {/* Cancel button */}
+          <TouchableOpacity
+            style={s.voicePickerCancel}
+            onPress={() => setVoicePickerVisible(false)}
+            activeOpacity={0.7}
+          >
+            <Text style={s.voicePickerCancelTxt}>{t("common.cancel")}</Text>
+          </TouchableOpacity>
         </View>
-      </View>
+      </Modal>
     </Modal>
   );
 }
 
+// ── Styles ────────────────────────────────────────────────────────────────────
+
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
-    container: {
+    screen: {
       flex: 1,
       backgroundColor: colors.background,
     },
-    closeButton: {
-      position: "absolute",
-      top: 18,
-      left: 18,
-      zIndex: 3,
-      width: 42,
-      height: 42,
-      borderRadius: 21,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: withOpacity(colors.card, 0.92),
-      borderWidth: 1,
-      borderColor: withOpacity(colors.border, 0.9),
+
+    // ── Pager (native horizontal ScrollView) ─────────────────────────────
+    pager: {
+      flex: 1,
     },
-    statusChip: {
-      position: "absolute",
-      top: 22,
-      right: 18,
-      zIndex: 3,
+    pagerContent: {
+      // contentContainerStyle — pages define their own width via s.page
+    },
+    page: {
+      width: SW,
+      flex: 1,
+      flexDirection: "column",
+      backgroundColor: colors.background,
+    },
+
+    // ── Top bar — sits above the pager, never scrolls ─────────────────────
+    topBar: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 6,
-      borderRadius: 999,
-      paddingHorizontal: 12,
-      paddingVertical: 7,
-      backgroundColor: withOpacity(colors.card, 0.94),
-      borderWidth: 1,
-      borderColor: withOpacity(colors.border, 0.9),
+      justifyContent: "space-between",
+      paddingHorizontal: 20,
+      paddingTop: 52,
+      paddingBottom: 4,
     },
-    statusChipText: {
-      fontSize: fontSize.xs,
+    iconBtn: {
+      width: 40,
+      height: 36,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    statusPill: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      paddingHorizontal: 12,
+      paddingVertical: 5,
+      borderRadius: 999,
+      backgroundColor: withOpacity(colors.primary, 0.1),
+    },
+    statusTxt: {
+      fontSize: 11,
       fontWeight: fontWeight.semibold,
       color: colors.primary,
-    },
-    scroll: {
-      flex: 1,
-    },
-    scrollContent: {
-      paddingHorizontal: 28,
-      paddingTop: 82,
-      paddingBottom: 310,
-    },
-    hero: {
-      alignItems: "center",
-    },
-    coverCard: {
-      width: 210,
-      height: 280,
-      borderRadius: 22,
-      overflow: "hidden",
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: withOpacity(colors.border, 0.9),
-    },
-    coverImage: {
-      width: "100%",
-      height: "100%",
-    },
-    coverFallback: {
-      flex: 1,
-      justifyContent: "flex-end",
-      paddingHorizontal: 22,
-      paddingBottom: 24,
-      backgroundColor: withOpacity(colors.card, 0.88),
-    },
-    coverFallbackEyebrow: {
-      fontSize: 11,
-      letterSpacing: 1.1,
       textTransform: "uppercase",
-      color: colors.mutedForeground,
-      fontWeight: fontWeight.semibold,
-      marginBottom: 8,
+      letterSpacing: 0.5,
     },
-    coverFallbackTitle: {
-      fontSize: 24,
-      lineHeight: 32,
-      color: colors.foreground,
-      fontWeight: fontWeight.bold,
-    },
-    titleBlock: {
-      marginTop: 28,
+    // ── Cover section ─────────────────────────────────────────────────────
+    coverSection: {
+      flex: 1,
       alignItems: "center",
-      gap: 8,
+      justifyContent: "center",
+      paddingVertical: 8,
+    },
+    /**
+     * Ambient glow effect — intentionally NO backgroundColor.
+     * Without a fill, this is invisible as a shape; the shadow
+     * properties alone produce the soft halo on iOS (shadowColor /
+     * shadowRadius). On Android the elevation tint from the cover
+     * itself provides the same effect.
+     */
+    glow: {
+      position: "absolute",
+      width: COVER_W + 60,
+      height: COVER_H + 40,
+      borderRadius: (COVER_W + 60) / 2,
+      // NO backgroundColor — this was the source of the "圆环" ring artifact
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.22,
+      shadowRadius: 64,
+    },
+    coverShadow: {
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 18 },
+      shadowOpacity: 0.28,
+      shadowRadius: 32,
+      elevation: 16,
+    },
+
+    // ── Book info below cover ─────────────────────────────────────────────
+    bookInfo: {
+      alignItems: "center",
+      paddingHorizontal: 36,
+      paddingTop: 4,
+      paddingBottom: 8,
     },
     bookTitle: {
-      fontSize: 28,
-      lineHeight: 34,
-      color: colors.foreground,
+      fontSize: 18,
       fontWeight: fontWeight.bold,
+      color: colors.foreground,
       textAlign: "center",
+      lineHeight: 26,
     },
-    chapterTitle: {
-      maxWidth: 320,
-      fontSize: fontSize.base,
-      lineHeight: 24,
+    bookChapter: {
+      fontSize: 14,
       color: colors.mutedForeground,
       textAlign: "center",
+      lineHeight: 20,
+      marginTop: 2,
     },
-    sourceText: {
-      fontSize: 12,
-      letterSpacing: 0.3,
-      color: colors.mutedForeground,
-      fontWeight: fontWeight.semibold,
+
+    // ── Progress bar ──────────────────────────────────────────────────────
+    progress: {
+      paddingHorizontal: 24,
+      paddingBottom: 8,
     },
-    metaRow: {
-      width: "100%",
-      flexDirection: "row",
-      gap: 12,
-      marginTop: 26,
-    },
-    metaItem: {
-      flex: 1,
-      borderRadius: 18,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: withOpacity(colors.border, 0.85),
-      paddingHorizontal: 14,
-      paddingVertical: 14,
-      gap: 4,
-    },
-    metaLabel: {
-      fontSize: 11,
-      color: colors.mutedForeground,
-      fontWeight: fontWeight.medium,
-    },
-    metaValue: {
-      fontSize: 13,
-      color: colors.foreground,
-      fontWeight: fontWeight.semibold,
-    },
-    excerptCard: {
-      marginTop: 28,
-      borderRadius: 26,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: withOpacity(colors.border, 0.85),
-      paddingHorizontal: 20,
-      paddingVertical: 18,
-    },
-    sectionEyebrow: {
-      fontSize: 11,
-      letterSpacing: 0.8,
-      textTransform: "uppercase",
-      color: colors.primary,
-      fontWeight: fontWeight.bold,
-    },
-    excerptText: {
-      marginTop: 12,
-      fontSize: 22,
-      lineHeight: 34,
-      color: colors.foreground,
-      fontWeight: fontWeight.semibold,
-    },
-    excerptSubtext: {
-      marginTop: 12,
-      fontSize: fontSize.sm,
-      lineHeight: 22,
-      color: colors.mutedForeground,
-    },
-    previewRow: {
-      marginTop: 18,
-      gap: 6,
-      paddingHorizontal: 4,
-    },
-    previewLabel: {
-      fontSize: 11,
-      textTransform: "uppercase",
-      letterSpacing: 0.7,
-      color: colors.mutedForeground,
-      fontWeight: fontWeight.semibold,
-    },
-    previewText: {
-      fontSize: fontSize.sm,
-      lineHeight: 22,
-      color: colors.foreground,
-    },
-    playerDock: {
-      position: "absolute",
-      left: 0,
-      right: 0,
-      bottom: 0,
-      paddingHorizontal: 20,
-      paddingTop: 14,
-      paddingBottom: 22,
-      borderTopLeftRadius: 32,
-      borderTopRightRadius: 32,
-      backgroundColor: withOpacity(colors.card, 0.97),
-      borderTopWidth: 1,
-      borderColor: withOpacity(colors.border, 0.9),
-    },
-    dockProgressTrack: {
-      height: 4,
+    progressTrack: {
+      height: 3,
       borderRadius: 999,
-      backgroundColor: withOpacity(colors.border, 0.7),
+      backgroundColor: withOpacity(colors.border, 0.45),
       overflow: "hidden",
     },
-    dockProgressFill: {
-      height: "100%",
+    progressFill: {
+      height: "100%" as unknown as number,
       borderRadius: 999,
       backgroundColor: colors.primary,
     },
-    dockMetaRow: {
-      marginTop: 10,
+    progressRow: {
       flexDirection: "row",
       justifyContent: "space-between",
-      alignItems: "center",
+      marginTop: 5,
     },
-    dockMetaText: {
-      fontSize: 12,
+    progressTxt: {
+      fontSize: 10,
       color: colors.mutedForeground,
-      fontWeight: fontWeight.medium,
     },
-    controlsRow: {
-      marginTop: 16,
+
+    // ── Transport controls ─────────────────────────────────────────────────
+    controls: {
       flexDirection: "row",
-      alignItems: "flex-end",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 20,
+      paddingVertical: 4,
+      paddingBottom: 10,
+    },
+    ctrlBtn: {
+      width: 46,
+      height: 46,
+      borderRadius: 23,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: withOpacity(colors.muted, 0.7),
+    },
+    /** Smaller secondary button for prev/next chapter */
+    ctrlBtnSm: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: withOpacity(colors.muted, 0.5),
+    },
+    ctrlBtnDisabled: {
+      opacity: 0.3,
+    },
+    playBtn: {
+      width: 68,
+      height: 68,
+      borderRadius: 34,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.primary,
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.35,
+      shadowRadius: 16,
+      elevation: 10,
+    },
+
+    // ── Settings row ──────────────────────────────────────────────────────
+    settings: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginHorizontal: 20,
+      marginBottom: 8,
+      borderRadius: 16,
+      backgroundColor: withOpacity(colors.muted, 0.5),
+      paddingHorizontal: 18,
+      paddingVertical: 12,
+    },
+    settingGroup: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
       justifyContent: "space-between",
     },
-    miniAction: {
-      minWidth: 54,
-      alignItems: "center",
-      gap: 7,
-    },
-    miniActionText: {
+    settingLbl: {
       fontSize: 11,
       color: colors.mutedForeground,
-      fontWeight: fontWeight.medium,
-    },
-    playButton: {
-      width: 78,
-      height: 78,
-      borderRadius: 39,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.primary,
-    },
-    toggleRow: {
-      marginTop: 18,
-      flexDirection: "row",
-      gap: 10,
-      flexWrap: "wrap",
-    },
-    toggleChip: {
-      flex: 1,
-      minWidth: 170,
-      borderRadius: 999,
-      backgroundColor: colors.accent,
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      alignItems: "center",
-    },
-    toggleChipActive: {
-      backgroundColor: colors.primary,
-    },
-    toggleChipText: {
-      fontSize: 12,
-      color: colors.foreground,
-      fontWeight: fontWeight.semibold,
-    },
-    toggleChipTextActive: {
-      color: colors.primaryForeground,
-    },
-    secondaryChip: {
-      borderRadius: 999,
-      backgroundColor: withOpacity(colors.muted, 0.98),
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    secondaryChipText: {
-      fontSize: 12,
-      color: colors.mutedForeground,
-      fontWeight: fontWeight.semibold,
-    },
-    settingsCard: {
-      marginTop: 14,
-      borderRadius: 22,
-      backgroundColor: withOpacity(colors.muted, 0.98),
-      paddingHorizontal: 16,
-      paddingVertical: 14,
-      gap: 14,
-    },
-    settingRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 16,
-    },
-    settingLabel: {
-      fontSize: fontSize.sm,
-      color: colors.foreground,
       fontWeight: fontWeight.medium,
     },
     stepper: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 12,
+      gap: 7,
     },
-    stepButton: {
-      width: 34,
-      height: 34,
-      borderRadius: 17,
+    stepBtn: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: colors.card,
       borderWidth: 1,
-      borderColor: withOpacity(colors.border, 0.85),
+      borderColor: withOpacity(colors.border, 0.6),
     },
-    stepperValue: {
-      minWidth: 48,
-      textAlign: "center",
-      fontSize: fontSize.sm,
+    stepVal: {
+      fontSize: 12,
       color: colors.foreground,
       fontWeight: fontWeight.semibold,
+      minWidth: 30,
+      textAlign: "center",
+    },
+    settingDiv: {
+      width: 1,
+      height: 20,
+      backgroundColor: withOpacity(colors.border, 0.5),
+      marginHorizontal: 10,
+    },
+    contBtn: {
+      borderRadius: 999,
+      paddingHorizontal: 9,
+      paddingVertical: 4,
+      backgroundColor: withOpacity(colors.background, 0.7),
+      borderWidth: 1,
+      borderColor: withOpacity(colors.border, 0.5),
+    },
+    contBtnOn: {
+      backgroundColor: withOpacity(colors.primary, 0.12),
+      borderColor: withOpacity(colors.primary, 0.3),
+    },
+    contBtnTxt: {
+      fontSize: 10,
+      fontWeight: fontWeight.semibold,
+      color: colors.mutedForeground,
+    },
+    contBtnTxtOn: {
+      color: colors.primary,
+    },
+
+    // ── Bottom row ────────────────────────────────────────────────────────
+    bottom: {
+      alignItems: "center",
+      justifyContent: "center",
+      paddingBottom: 34,
+      paddingTop: 4,
+    },
+    /** Bottom strip — continuous toggle on left, chips on right */
+    bottomStrip: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 20,
+      width: "100%" as unknown as number,
+      gap: 8,
+    },
+    /** Animated page indicator — inner container */
+    pageIndicator: {
+      // PILL_W(18) + GAP(5) + DOT(6) = 29 — all children are absolutely positioned
+      width: 29,
+      height: 6,
+    },
+    dot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: withOpacity(colors.mutedForeground, 0.65),
+    },
+    /** Helper — makes a dot absolutely positioned within pageIndicator */
+    dotAbs: {
+      position: "absolute",
+      top: 0,
+    },
+    /** Animated pill — absolutely positioned at left:0, translateX 0→11 */
+    dotPill: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: colors.primary,
+    },
+    chips: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+    },
+    chip: {
+      paddingHorizontal: 9,
+      paddingVertical: 3,
+      borderRadius: 999,
+      backgroundColor: withOpacity(colors.muted, 0.9),
+      maxWidth: 130,
+    },
+    chipTxt: {
+      fontSize: 10,
+      color: colors.mutedForeground,
+      fontWeight: fontWeight.medium,
+    },
+
+    // ── Lyrics view ───────────────────────────────────────────────────────
+
+    /** Thumbnail + book meta side by side below top bar */
+    lyricHeaderRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 22,
+      paddingVertical: 10,
+      gap: 14,
+    },
+    thumbShadowWrap: {
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.18,
+      shadowRadius: 8,
+      elevation: 6,
+    },
+    lyricHeaderMeta: {
+      flex: 1,
+    },
+    lyricBookName: {
+      fontSize: 15,
+      fontWeight: fontWeight.semibold,
+      color: colors.foreground,
+      lineHeight: 22,
+    },
+    lyricChapterName: {
+      fontSize: 12,
+      color: colors.mutedForeground,
+      lineHeight: 18,
+      marginTop: 3,
+    },
+
+    /** Karaoke text area — centered, fills remaining space */
+    lyricArea: {
+      flex: 1,
+      paddingHorizontal: 28,
+      justifyContent: "center",
+      alignItems: "center",
+      gap: 20,
+    },
+
+    /** ScrollView wrapper for the active lyric so long text can scroll */
+    lyricActiveScroll: {
+      maxHeight: 200,
+      flexShrink: 1,
+      alignSelf: "stretch",
+    },
+
+    lyricActiveScrollContent: {
+      justifyContent: "center",
+      alignItems: "center",
+      paddingVertical: 4,
+    },
+
+    /** Active / hero line — 100% opacity, largest */
+    lyricActive: {
+      fontSize: 22,
+      fontWeight: fontWeight.bold,
+      color: colors.foreground,
+      textAlign: "center",
+      lineHeight: 33,
+    },
+
+    /** Next line — 58% opacity, medium size */
+    lyricNear: {
+      fontSize: 15,
+      fontWeight: fontWeight.medium,
+      color: colors.foreground,
+      opacity: 0.58,
+      textAlign: "center",
+      lineHeight: 23,
+    },
+
+    /** Previous / context line — 33% opacity, smallest */
+    lyricFar: {
+      fontSize: 13,
+      color: colors.foreground,
+      opacity: 0.33,
+      textAlign: "center",
+      lineHeight: 20,
+    },
+
+    // ── Engine + Voice picker bottom sheet ───────────────────────────────
+    voicePickerBackdrop: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.45)",
+    },
+    voicePickerSheet: {
+      backgroundColor: colors.background,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      paddingBottom: 34,
+      maxHeight: SH * 0.82,
+    },
+    voicePickerHandle: {
+      width: 36,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: colors.border,
+      alignSelf: "center",
+      marginTop: 12,
+      marginBottom: 4,
+    },
+    voicePickerHeader: {
+      paddingHorizontal: 20,
+      paddingTop: 14,
+      paddingBottom: 8,
+    },
+    voicePickerTitle: {
+      fontSize: 11,
+      fontWeight: fontWeight.semibold,
+      color: colors.mutedForeground,
+      textTransform: "uppercase",
+      letterSpacing: 0.9,
+    },
+    // Engine selector rows
+    engineSection: {
+      marginHorizontal: 16,
+      marginBottom: 4,
+      borderRadius: 14,
+      overflow: "hidden",
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+    },
+    engineRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 16,
+      paddingVertical: 13,
+      backgroundColor: colors.background,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: withOpacity(colors.border, 0.5),
+    },
+    engineRowActive: {
+      backgroundColor: withOpacity(colors.primary, 0.06),
+    },
+    engineRowLeft: {
+      flex: 1,
+    },
+    engineRowLabel: {
+      fontSize: 15,
+      fontWeight: fontWeight.medium,
+      color: colors.foreground,
+    },
+    engineRowLabelActive: {
+      color: colors.primary,
+      fontWeight: fontWeight.semibold,
+    },
+    engineRowDesc: {
+      fontSize: 11,
+      color: colors.mutedForeground,
+      marginTop: 2,
+    },
+    engineCheckmark: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: colors.primary,
+      alignItems: "center",
+      justifyContent: "center",
+      marginLeft: 12,
+    },
+    engineCheckmarkTxt: {
+      fontSize: 13,
+      color: "#fff",
+      fontWeight: fontWeight.bold,
+    },
+    // Voice list
+    voicePickerList: {
+      flexGrow: 0,
+    },
+    voiceLangHeader: {
+      paddingHorizontal: 20,
+      paddingVertical: 6,
+      backgroundColor: withOpacity(colors.muted, 0.6),
+    },
+    voiceLangTxt: {
+      fontSize: 10,
+      fontWeight: fontWeight.semibold,
+      color: colors.mutedForeground,
+      textTransform: "uppercase",
+      letterSpacing: 0.7,
+    },
+    voiceItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 20,
+      paddingVertical: 15,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: withOpacity(colors.border, 0.4),
+    },
+    voiceItemSelected: {
+      backgroundColor: withOpacity(colors.primary, 0.06),
+    },
+    voiceItemTxt: {
+      fontSize: 15,
+      color: colors.foreground,
+    },
+    voiceItemTxtSelected: {
+      fontWeight: fontWeight.semibold,
+      color: colors.primary,
+    },
+    voiceItemCheck: {
+      fontSize: 15,
+      fontWeight: fontWeight.bold,
+      color: colors.primary,
+    },
+    voiceBrowserNote: {
+      padding: 28,
+      alignItems: "center",
+    },
+    voiceBrowserNoteTxt: {
+      fontSize: 14,
+      color: colors.mutedForeground,
+      textAlign: "center",
+      lineHeight: 20,
+    },
+    voicePickerCancel: {
+      marginHorizontal: 16,
+      marginTop: 12,
+      paddingVertical: 15,
+      borderRadius: 14,
+      backgroundColor: colors.muted,
+      alignItems: "center",
+    },
+    voicePickerCancelTxt: {
+      fontSize: 15,
+      fontWeight: fontWeight.semibold,
+      color: colors.foreground,
     },
   });

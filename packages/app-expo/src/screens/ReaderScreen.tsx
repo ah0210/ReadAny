@@ -359,6 +359,8 @@ const TOOLBAR_HIDE_OFFSET = 100;
   const ttsConfig = useTTSStore((s) => s.config);
   const ttsUpdateConfig = useTTSStore((s) => s.updateConfig);
   const ttsSetOnEnd = useTTSStore((s) => s.setOnEnd);
+  const ttsCurrentChunkIndex = useTTSStore((s) => s.currentChunkIndex);
+  const ttsTotalChunks = useTTSStore((s) => s.totalChunks);
 
   const book = useMemo(() => books.find((b) => b.id === bookId), [books, bookId]);
   const ttsSourceLabel =
@@ -1059,6 +1061,23 @@ const TOOLBAR_HIDE_OFFSET = 100;
       }
     }, 500);
   }, [ttsPlay, ttsSetOnEnd, ttsStop]);
+
+  const handleTTSPrevChapter = useCallback(() => {
+    // Find index of current chapter in toc, go to previous
+    const idx = toc.findIndex((item) => item.title === currentChapter);
+    const prevIdx = idx > 0 ? idx - 1 : 0;
+    if (toc[prevIdx]) {
+      bridge.goToHref(toc[prevIdx].href);
+    }
+  }, [toc, currentChapter, bridge]);
+
+  const handleTTSNextChapter = useCallback(() => {
+    const idx = toc.findIndex((item) => item.title === currentChapter);
+    const nextIdx = idx >= 0 && idx < toc.length - 1 ? idx + 1 : toc.length - 1;
+    if (toc[nextIdx]) {
+      bridge.goToHref(toc[nextIdx].href);
+    }
+  }, [toc, currentChapter, bridge]);
 
   const startSelectionTTS = useCallback(
     (text: string) => {
@@ -2255,6 +2274,8 @@ const TOOLBAR_HIDE_OFFSET = 100;
         totalPages={totalPages}
         sourceLabel={ttsSourceLabel}
         continuousEnabled={ttsContinuousEnabled}
+        currentChunkIndex={ttsCurrentChunkIndex}
+        totalChunks={ttsTotalChunks}
         onClose={() => setShowTTS(false)}
         onReplay={handleTTSReplay}
         onPlayPause={handleTTSPlayPause}
@@ -2266,6 +2287,9 @@ const TOOLBAR_HIDE_OFFSET = 100;
         onAdjustRate={handleAdjustTTSRate}
         onAdjustPitch={handleAdjustTTSPitch}
         onToggleContinuous={handleToggleTTSContinuous}
+        onUpdateConfig={ttsUpdateConfig}
+        onPrevChapter={toc.length > 0 ? handleTTSPrevChapter : undefined}
+        onNextChapter={toc.length > 0 ? handleTTSNextChapter : undefined}
       />
     </View>
   );
