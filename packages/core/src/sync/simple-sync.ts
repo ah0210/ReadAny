@@ -26,6 +26,10 @@ interface SyncTableConfig {
   excludeColumns?: readonly string[];
 }
 
+export interface SimpleSyncOptions {
+  receiveOnly?: boolean;
+}
+
 /** Tables included in sync, with their primary key and timestamp column */
 const SYNC_TABLES: SyncTableConfig[] = [
   // is_vectorized and vectorize_progress are local-only (chunks live in readany_local.db)
@@ -371,16 +375,26 @@ async function listRemoteDeviceFiles(
 export async function runSimpleSync(
   backend: ISyncBackend,
   onProgress?: (progress: { phase: "database" | "files"; operation: "upload" | "download"; message: string }) => void,
+  options: SimpleSyncOptions = {},
 ): Promise<{ success: boolean; changes: number; filesUploaded: number; filesDownloaded: number; error?: string }> {
   try {
-    onProgress?.({ phase: "database", operation: "upload", message: "准备同步..." });
+    const { receiveOnly = false } = options;
+    onProgress?.({
+      phase: "database",
+      operation: receiveOnly ? "download" : "upload",
+      message: "准备同步...",
+    });
 
     const lastSync = await getLastSyncTimestamp();
     const localDeviceId = await getDeviceId();
     const now = Date.now();
 
     // 1. Ensure remote sync directory exists
-    onProgress?.({ phase: "database", operation: "upload", message: "检查远程目录..." });
+    onProgress?.({
+      phase: "database",
+      operation: receiveOnly ? "download" : "upload",
+      message: "检查远程目录...",
+    });
     try {
       await backend.ensureDirectories();
     } catch (e) {
@@ -427,38 +441,49 @@ export async function runSimpleSync(
     }
 
     // 3. Collect and push local changes
-    onProgress?.({ phase: "database", operation: "upload", message: "收集本地变更..." });
-    const localDelta = await collectChanges(lastSync);
-    const snapshotPayload = await collectChanges(0);
+    let changeCount = 0;
+    if (!receiveOnly) {
+      onProgress?.({ phase: "database", operation: "upload", message: "收集本地变更..." });
+      const localDelta = await collectChanges(lastSync);
+      const snapshotPayload = await collectChanges(0);
 
-    const changeCount = Object.values(localDelta.tables).reduce(
-      (sum, t) => sum + t.records.length + t.deletedIds.length,
-      0,
-    );
+      changeCount = Object.values(localDelta.tables).reduce(
+        (sum, t) => sum + t.records.length + t.deletedIds.length,
+        0,
+      );
 
-    try {
-      if (changeCount > 0) {
-        onProgress?.({ phase: "database", operation: "upload", message: `上传 ${changeCount} 条变更...` });
-        await backend.putJSON(deviceSyncPath(localDeviceId), snapshotPayload);
-      } else {
-        // Keep a full snapshot on the server so devices that sync later can still
-        // bootstrap from this device even when there are no new local changes.
-        const existing = await backend.getJSON<DeviceSyncPayload>(
-          deviceSyncPath(localDeviceId),
-        ).catch(() => null);
-        if (!existing || now - existing.timestamp > 5 * 60 * 1000) {
+      try {
+        if (changeCount > 0) {
+          onProgress?.({
+            phase: "database",
+            operation: "upload",
+            message: `上传 ${changeCount} 条变更...`,
+          });
           await backend.putJSON(deviceSyncPath(localDeviceId), snapshotPayload);
+        } else {
+          // Keep a full snapshot on the server so devices that sync later can still
+          // bootstrap from this device even when there are no new local changes.
+          const existing = await backend.getJSON<DeviceSyncPayload>(
+            deviceSyncPath(localDeviceId),
+          ).catch(() => null);
+          if (!existing || now - existing.timestamp > 5 * 60 * 1000) {
+            await backend.putJSON(deviceSyncPath(localDeviceId), snapshotPayload);
+          }
         }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        throw new Error(`上传本地变更失败，请检查网络连接或存储服务权限：${msg}`);
       }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      throw new Error(`上传本地变更失败，请检查网络连接或存储服务权限：${msg}`);
     }
 
     // 4. Sync book files and covers
     let filesUploaded = 0;
     let filesDownloaded = 0;
-    onProgress?.({ phase: "files", operation: "upload", message: "同步书籍和封面文件..." });
+    onProgress?.({
+      phase: "files",
+      operation: receiveOnly ? "download" : "upload",
+      message: "同步书籍和封面文件...",
+    });
     try {
       const { syncFiles } = await import("./sync-engine");
       const fileResult = await syncFiles(backend, (progress) => {
@@ -467,7 +492,13 @@ export async function runSimpleSync(
           operation: progress.operation,
           message: progress.message || "同步文件...",
         });
-      });
+      }, receiveOnly
+        ? {
+            downloadRemoteBooks: true,
+            disableUploads: true,
+            disableRemoteDeletes: true,
+          }
+        : undefined);
       filesUploaded = fileResult.filesUploaded;
       filesDownloaded = fileResult.filesDownloaded;
       console.log(`[SimpleSync] File sync: ${filesUploaded} uploaded, ${filesDownloaded} downloaded`);
@@ -479,7 +510,11 @@ export async function runSimpleSync(
     // 5. Update last sync timestamp
     await setLastSyncTimestamp(now);
 
-    onProgress?.({ phase: "database", operation: "upload", message: "同步完成" });
+    onProgress?.({
+      phase: "database",
+      operation: receiveOnly ? "download" : "upload",
+      message: "同步完成",
+    });
     return { success: true, changes: changeCount + totalApplied, filesUploaded, filesDownloaded };
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e);

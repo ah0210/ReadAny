@@ -12,6 +12,8 @@ export interface SyncFilesOptions {
   forceUploadAll?: boolean;
   forceDownloadAll?: boolean;
   downloadRemoteBooks?: boolean;
+  disableUploads?: boolean;
+  disableRemoteDeletes?: boolean;
 }
 
 /**
@@ -36,6 +38,8 @@ export async function syncFiles(
     forceUploadAll = false,
     forceDownloadAll = false,
     downloadRemoteBooks = false,
+    disableUploads = false,
+    disableRemoteDeletes = false,
   } = options;
   let filesUploaded = 0;
   let filesDownloaded = 0;
@@ -121,7 +125,7 @@ export async function syncFiles(
     const localExists = localExistsMap.get(localPath) ?? false;
     const remoteExists = remoteFileNames.has(remoteName);
 
-    if (localExists && (forceUploadAll || !remoteExists)) {
+    if (!disableUploads && localExists && (forceUploadAll || !remoteExists)) {
       uploadTasks.push(async () => {
         const taskStart = Date.now();
         const bookTitle = book.title || "未知书籍";
@@ -178,7 +182,7 @@ export async function syncFiles(
     const localExists = localExistsMap.get(coverLocalPath) ?? false;
     const remoteExists = remoteCoverNames.has(coverRemoteName);
 
-    if (localExists && (forceUploadAll || !remoteExists)) {
+    if (!disableUploads && localExists && (forceUploadAll || !remoteExists)) {
       uploadTasks.push(async () => {
         const taskStart = Date.now();
         const bookTitle = book.title || "未知书籍";
@@ -277,42 +281,44 @@ export async function syncFiles(
 
   // Clean up remote orphaned assets for books that no longer exist in the merged DB.
   const remoteDeleteTasks: (() => Promise<boolean>)[] = [];
-  for (const file of remoteFiles) {
-    if (file.isDirectory) continue;
-    const bookId = getManagedAssetBookId(file.name);
-    if (bookId && !currentBookIds.has(bookId)) {
-      remoteDeleteTasks.push(async () => {
-        try {
-          await backend.delete(`${REMOTE_FILES}/${file.name}`);
-          console.log(`[Sync] 🗑️ Deleted remote orphaned book file: ${file.name}`);
-          return true;
-        } catch (e) {
-          console.warn(`[Sync] Failed to delete remote orphaned book file ${file.name}:`, e);
-          return false;
-        }
-      });
+  if (!disableRemoteDeletes) {
+    for (const file of remoteFiles) {
+      if (file.isDirectory) continue;
+      const bookId = getManagedAssetBookId(file.name);
+      if (bookId && !currentBookIds.has(bookId)) {
+        remoteDeleteTasks.push(async () => {
+          try {
+            await backend.delete(`${REMOTE_FILES}/${file.name}`);
+            console.log(`[Sync] 🗑️ Deleted remote orphaned book file: ${file.name}`);
+            return true;
+          } catch (e) {
+            console.warn(`[Sync] Failed to delete remote orphaned book file ${file.name}:`, e);
+            return false;
+          }
+        });
+      }
     }
-  }
-  for (const file of remoteCovers) {
-    if (file.isDirectory) continue;
-    const bookId = getManagedAssetBookId(file.name);
-    if (bookId && !currentBookIds.has(bookId)) {
-      remoteDeleteTasks.push(async () => {
-        try {
-          await backend.delete(`${REMOTE_COVERS}/${file.name}`);
-          console.log(`[Sync] 🗑️ Deleted remote orphaned cover: ${file.name}`);
-          return true;
-        } catch (e) {
-          console.warn(`[Sync] Failed to delete remote orphaned cover ${file.name}:`, e);
-          return false;
-        }
-      });
+    for (const file of remoteCovers) {
+      if (file.isDirectory) continue;
+      const bookId = getManagedAssetBookId(file.name);
+      if (bookId && !currentBookIds.has(bookId)) {
+        remoteDeleteTasks.push(async () => {
+          try {
+            await backend.delete(`${REMOTE_COVERS}/${file.name}`);
+            console.log(`[Sync] 🗑️ Deleted remote orphaned cover: ${file.name}`);
+            return true;
+          } catch (e) {
+            console.warn(`[Sync] Failed to delete remote orphaned cover ${file.name}:`, e);
+            return false;
+          }
+        });
+      }
     }
-  }
 
-  if (remoteDeleteTasks.length > 0) {
-    console.log(`[Sync] 🧹 Cleaning up ${remoteDeleteTasks.length} remote orphaned assets...`);
-    await parallelLimit(remoteDeleteTasks, 5);
+    if (remoteDeleteTasks.length > 0) {
+      console.log(`[Sync] 🧹 Cleaning up ${remoteDeleteTasks.length} remote orphaned assets...`);
+      await parallelLimit(remoteDeleteTasks, 5);
+    }
   }
 
   // Also clean up app-managed local orphaned assets after DB sync.

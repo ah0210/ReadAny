@@ -8,6 +8,13 @@ import { getSyncAdapter } from "./sync-adapter";
 import { SYNC_SCHEMA_VERSION, REMOTE_MANIFEST } from "./sync-types";
 import { type LANQRData, createLANQRData, generatePairCode } from "./lan-backend";
 import type { ISyncBackend, RemoteFile } from "./sync-backend";
+import { collectChanges, type DeviceSyncPayload } from "./simple-sync";
+
+const LAN_SYNC_DIR = "/readany/sync";
+
+function getLanDeviceSnapshotPath(deviceId: string): string {
+  return `${LAN_SYNC_DIR}/device-${deviceId}.json`;
+}
 
 /**
  * Local filesystem backend for the LAN server.
@@ -15,6 +22,10 @@ import type { ISyncBackend, RemoteFile } from "./sync-backend";
  */
 class LocalFsBackend implements ISyncBackend {
   readonly type = "lan" as const;
+
+  private async getCurrentDeviceSnapshot(): Promise<DeviceSyncPayload> {
+    return collectChanges(0);
+  }
 
   private async getDataDir(): Promise<string> {
     const adapter = getSyncAdapter();
@@ -70,6 +81,18 @@ class LocalFsBackend implements ISyncBackend {
   async get(path: string): Promise<Uint8Array> {
     const platform = getPlatformService();
     const adapter = getSyncAdapter();
+
+    if (path.startsWith(`${LAN_SYNC_DIR}/device-`) && path.endsWith(".json")) {
+      const snapshot = await this.getCurrentDeviceSnapshot();
+      const expectedPath = getLanDeviceSnapshotPath(snapshot.deviceId);
+      if (path !== expectedPath) {
+        const err = new Error("File not found");
+        (err as any).statusCode = 404;
+        throw err;
+      }
+      return new TextEncoder().encode(JSON.stringify(snapshot));
+    }
+
     const resolvedPath = await this.mapVirtualPath(path);
     
     // Special handling for database to ensure consistency (snapshot via vacuum)
@@ -127,6 +150,20 @@ class LocalFsBackend implements ISyncBackend {
   }
 
   async listDir(path: string): Promise<RemoteFile[]> {
+    if (path === LAN_SYNC_DIR) {
+      const snapshot = await this.getCurrentDeviceSnapshot();
+      const virtualPath = getLanDeviceSnapshotPath(snapshot.deviceId);
+      return [
+        {
+          name: `device-${snapshot.deviceId}.json`,
+          path: virtualPath,
+          size: 0,
+          lastModified: snapshot.timestamp,
+          isDirectory: false,
+        },
+      ];
+    }
+
     const adapter = getSyncAdapter();
     const resolvedPath = await this.mapVirtualPath(path);
     try {
@@ -155,6 +192,10 @@ class LocalFsBackend implements ISyncBackend {
   }
 
   async exists(path: string): Promise<boolean> {
+    if (path.startsWith(`${LAN_SYNC_DIR}/device-`) && path.endsWith(".json")) {
+      const snapshot = await this.getCurrentDeviceSnapshot();
+      return path === getLanDeviceSnapshotPath(snapshot.deviceId);
+    }
     const adapter = getSyncAdapter();
     const resolvedPath = await this.mapVirtualPath(path);
     return adapter.fileExists(resolvedPath);
