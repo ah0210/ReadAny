@@ -421,60 +421,6 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       try {
         await flushPendingReadingSession();
         set({ status: "checking", error: null, pendingDirection: null });
-        if (backend.type === "lan") {
-          const { runSync } = await import("../sync/sync-engine");
-          const remoteManifest = await backend
-            .getJSON<RemoteSyncManifest>(REMOTE_MANIFEST)
-            .catch(() => null);
-
-          const result = await runSync(
-            backend,
-            "download",
-            (progress) => {
-              set({
-                status: statusFromProgress(progress),
-                progress,
-              });
-            },
-            remoteManifest,
-            undefined,
-            false,
-            { forceDownloadAll: true, downloadRemoteBooks: true },
-          );
-
-          if (result.success) {
-            const syncedAt = Date.now();
-            set({
-              status: "idle",
-              lastSyncAt: syncedAt,
-              lastResult: result,
-              error: null,
-              progress: null,
-              pendingDirection: null,
-            });
-            notifyLibraryStateChanged();
-            notifySyncCompleted(syncedAt);
-            await persistSyncRuntimeState({
-              lastSyncAt: syncedAt,
-              lastResult: result,
-            });
-          } else {
-            set({
-              status: "error",
-              lastResult: result,
-              error: result.error || "同步失败",
-              progress: null,
-              pendingDirection: null,
-            });
-            await persistSyncRuntimeState({
-              lastSyncAt: get().lastSyncAt,
-              lastResult: result,
-            });
-          }
-
-          return result;
-        }
-
         const result = await get().syncSimple(backend);
         if (!result) {
           set({ status: "idle", progress: null, pendingDirection: null });
@@ -516,26 +462,32 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     try {
       const { runSimpleSync } = await import("../sync/simple-sync");
 
-      const result = await runSimpleSync(backend, (progress) => {
-        set({
-          progress: {
-            phase: progress.phase,
-            operation: progress.operation,
-            completedFiles: 0,
-            totalFiles: 1,
-            message: progress.message,
-          },
-        });
-      });
+      const receiveOnly = backend.type === "lan";
+      const result = await runSimpleSync(
+        backend,
+        (progress) => {
+          set({
+            progress: {
+              phase: progress.phase,
+              operation: progress.operation,
+              completedFiles: 0,
+              totalFiles: 1,
+              message: progress.message,
+            },
+          });
+        },
+        receiveOnly ? { receiveOnly: true } : undefined,
+      );
 
       if (result.success) {
         const syncedAt = Date.now();
+        const direction = receiveOnly ? ("download" as const) : ("upload" as const);
         set({
           status: "idle",
           lastSyncAt: syncedAt,
           lastResult: {
             success: true,
-            direction: "upload",
+            direction,
             filesUploaded: result.filesUploaded,
             filesDownloaded: result.filesDownloaded,
             durationMs: 0,
@@ -549,7 +501,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
           lastSyncAt: syncedAt,
           lastResult: {
             success: true,
-            direction: "upload",
+            direction,
             filesUploaded: result.filesUploaded,
             filesDownloaded: result.filesDownloaded,
             durationMs: 0,
@@ -584,7 +536,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
       return {
         success: result.success,
-        direction: "upload" as const,
+        direction: receiveOnly ? ("download" as const) : ("upload" as const),
         filesUploaded: result.filesUploaded,
         filesDownloaded: result.filesDownloaded,
         durationMs: 0,

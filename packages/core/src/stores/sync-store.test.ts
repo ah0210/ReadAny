@@ -279,35 +279,25 @@ describe("useSyncStore", () => {
     );
   });
 
-  it("syncWithBackend uses full download flow for LAN import", async () => {
+  it("syncWithBackend uses incremental receive-only flow for LAN import", async () => {
     const emitSpy = vi.spyOn(eventBus, "emit");
-    syncMocks.runSync.mockResolvedValue({
+    syncMocks.runSimpleSync.mockResolvedValue({
       success: true,
-      direction: "download",
+      changes: 5,
       filesUploaded: 0,
       filesDownloaded: 4,
-      durationMs: 12,
     });
 
     const result = await useSyncStore
       .getState()
       .syncWithBackend(mockLanBackend as unknown as ISyncBackend);
 
-    expect(syncMocks.runSimpleSync).not.toHaveBeenCalled();
-    expect(syncMocks.runSync).toHaveBeenCalledWith(
+    expect(syncMocks.runSimpleSync).toHaveBeenCalledWith(
       mockLanBackend,
-      "download",
       expect.any(Function),
-      expect.objectContaining({
-        lastModifiedAt: 123,
-      }),
-      undefined,
-      false,
-      {
-        forceDownloadAll: true,
-        downloadRemoteBooks: true,
-      },
+      { receiveOnly: true },
     );
+    expect(syncMocks.runSync).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       success: true,
       direction: "download",

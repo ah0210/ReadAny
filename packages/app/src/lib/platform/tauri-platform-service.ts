@@ -16,6 +16,19 @@ import type {
   WebSocketOptions,
 } from "@readany/core/services";
 
+const TAURI_LAN_RUNTIME_ERROR =
+  "Tauri desktop runtime is required to use the LAN sender. Open the desktop app instead of the browser dev server.";
+
+function isTauriRuntimeAvailable(): boolean {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+function ensureTauriRuntimeForLAN(): void {
+  if (!isTauriRuntimeAvailable()) {
+    throw new Error(TAURI_LAN_RUNTIME_ERROR);
+  }
+}
+
 /** Adapter: wraps Tauri SQL plugin instance as IDatabase */
 function isClosedPoolError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -304,6 +317,8 @@ export class TauriPlatformService implements IPlatformService {
   }
 
   async getLocalIP(): Promise<string> {
+    ensureTauriRuntimeForLAN();
+
     // Try Rust-side detection first (most reliable)
     try {
       const { invoke } = await import("@tauri-apps/api/core");
@@ -400,6 +415,8 @@ export class TauriPlatformService implements IPlatformService {
       headers: Record<string, string>,
     ) => Promise<{ status: number; body?: Uint8Array; headers?: Record<string, string> }>,
   ): Promise<{ port: number; server: unknown }> {
+    ensureTauriRuntimeForLAN();
+
     const { invoke } = await import("@tauri-apps/api/core");
     const { listen } = await import("@tauri-apps/api/event");
 
@@ -438,6 +455,8 @@ export class TauriPlatformService implements IPlatformService {
   }
 
   async stopLANServer(server: unknown): Promise<void> {
+    ensureTauriRuntimeForLAN();
+
     const { invoke } = await import("@tauri-apps/api/core");
     await invoke("stop_lan_server");
     if (typeof server === "function") {

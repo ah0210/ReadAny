@@ -215,8 +215,12 @@ export const useTTSStore = create<TTSState>()(
         playState: "stopped",
         currentText: "",
         currentSegmentText: "",
+        onEnd: null,
         currentChunkIndex: 0,
         totalChunks: 0,
+        currentBookTitle: "",
+        currentChapterTitle: "",
+        currentBookId: "",
         currentLocationCfi: "",
       });
     },

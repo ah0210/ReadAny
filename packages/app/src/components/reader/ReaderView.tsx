@@ -546,10 +546,11 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       : [];
   }, [ttsCurrentText, ttsLastText, ttsSegments]);
   const currentTTSSegment = useMemo(() => {
+    if (ttsCurrentBookId !== bookId) return null;
     if (!ttsSegments.length) return null;
     const index = Math.max(0, Math.min(ttsCurrentChunkIndex, ttsSegments.length - 1));
     return ttsSegments[index] ?? null;
-  }, [ttsCurrentChunkIndex, ttsSegments]);
+  }, [bookId, ttsCurrentBookId, ttsCurrentChunkIndex, ttsSegments]);
   const ttsSegmentsRef = useRef<TTSSegment[]>([]);
   const ttsLastTextRef = useRef("");
   const ttsFutureSegmentsRef = useRef<TTSSegment[]>([]);
@@ -570,6 +571,49 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   const startPageTTSFromCfiRef = useRef<
     ((targetCfi: string, targetText?: string) => Promise<void>) | null
   >(null);
+  const previousReaderBookIdRef = useRef<string | null>(null);
+
+  const resetReaderTTSState = useCallback(
+    ({
+      stopPlayback = false,
+      clearSessionBinding = false,
+    }: { stopPlayback?: boolean; clearSessionBinding?: boolean } = {}) => {
+      ttsContinuousRef.current = false;
+      pendingTTSContinueCallbackRef.current = null;
+      if (pendingTTSContinueSafetyTimerRef.current) {
+        clearTimeout(pendingTTSContinueSafetyTimerRef.current);
+        pendingTTSContinueSafetyTimerRef.current = null;
+      }
+      ttsLoadMoreAboveRef.current = null;
+      ttsLoadMoreBelowRef.current = null;
+      ttsSegmentsRef.current = [];
+      ttsLastTextRef.current = "";
+      ttsFutureSegmentsRef.current = [];
+      setTtsSourceKind("page");
+      setTtsLastText("");
+      setTtsSegments([]);
+      setTtsPrevPageSegments([]);
+      setTtsFutureSegments([]);
+      if (clearSessionBinding) {
+        ttsSetOnEnd(null);
+      }
+      void foliateRef.current?.setTTSHighlight(null);
+      if (stopPlayback) {
+        ttsStop();
+      }
+    },
+    [ttsSetOnEnd, ttsStop],
+  );
+
+  useEffect(() => {
+    const previousBookId = previousReaderBookIdRef.current;
+    previousReaderBookIdRef.current = bookId;
+    const switchedBook = !!previousBookId && previousBookId !== bookId;
+    resetReaderTTSState({ stopPlayback: false, clearSessionBinding: false });
+    if (switchedBook) {
+      setShowTTS(false);
+    }
+  }, [bookId, resetReaderTTSState]);
 
   const { t } = useTranslation();
   const isInitializedRef = useRef(false);
@@ -1110,6 +1154,10 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   const handleToggleSettings = useCallback(() => setShowSettings((p) => !p), []);
 
   useEffect(() => {
+    if (ttsCurrentBookId !== bookId) {
+      void foliateRef.current?.setTTSHighlight(null);
+      return;
+    }
     if (ttsPlayState !== "playing" && ttsPlayState !== "paused" && ttsPlayState !== "loading") {
       void foliateRef.current?.setTTSHighlight(null);
       return;
@@ -1122,7 +1170,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       currentTTSSegment?.cfi || null,
       "rgba(96, 165, 250, 0.35)",
     );
-  }, [currentTTSSegment?.cfi, ttsPlayState, ttsSourceKind]);
+  }, [bookId, currentTTSSegment?.cfi, ttsCurrentBookId, ttsPlayState, ttsSourceKind]);
 
   useEffect(() => {
     if (ttsCurrentBookId !== bookId) return;
@@ -1440,7 +1488,9 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       return;
     }
 
-    const hasActiveSession = ttsPlayState !== "stopped" || !!(ttsCurrentText || ttsLastText).trim();
+    const hasActiveSession =
+      ttsCurrentBookId === bookId &&
+      (ttsPlayState !== "stopped" || !!(ttsCurrentText || ttsLastText).trim());
     const isPlaying = ttsPlayState === "playing" || ttsPlayState === "loading";
     const chapterChanged =
       ttsStartChapterRef.current !== "" && ttsStartChapterRef.current !== readerTab?.chapterTitle;
@@ -1456,9 +1506,11 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     ttsStartChapterRef.current = readerTab?.chapterTitle ?? "";
     await startPageTTS(ttsContinuousEnabled);
   }, [
+    bookId,
     showTTS,
     startPageTTS,
     ttsContinuousEnabled,
+    ttsCurrentBookId,
     ttsCurrentText,
     ttsLastText,
     ttsPlayState,
@@ -1760,12 +1812,14 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   // Stop TTS when leaving the reader
   useEffect(() => {
     return () => {
-      ttsContinuousRef.current = false;
-      ttsSetOnEnd(null);
-      ttsStop();
-      void foliateRef.current?.setTTSHighlight(null);
+      const currentTTSState = useTTSStore.getState();
+      const ownsCurrentSession = currentTTSState.currentBookId === bookId;
+      resetReaderTTSState({
+        stopPlayback: ownsCurrentSession,
+        clearSessionBinding: ownsCurrentSession,
+      });
     };
-  }, [ttsSetOnEnd, ttsStop]);
+  }, [bookId, resetReaderTTSState]);
 
   // --- Search logic ---
   const searchGeneratorRef = useRef<AsyncGenerator | null>(null);

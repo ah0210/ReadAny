@@ -1,4 +1,4 @@
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { useSyncStore } from "@/stores/sync-store";
 import type { LANConnectionState } from "@readany/core/sync/lan-backend";
 import {
@@ -23,6 +23,24 @@ interface LANSyncDialogProps {
 export function LANSyncDialog({ open, onClose, mode }: LANSyncDialogProps) {
   const { t } = useTranslation();
   const { syncWithBackend } = useSyncStore();
+
+  const isManualIPError = useCallback((message: string): boolean => {
+    return (
+      message.includes("Could not determine local IP address") ||
+      message.includes("Failed to get local IP") ||
+      message.includes("Cannot auto-detect IP address")
+    );
+  }, []);
+
+  const normalizeServerError = useCallback(
+    (message: string): string => {
+      if (message.includes("Tauri desktop runtime is required")) {
+        return t("settings.syncLANTauriRequired");
+      }
+      return message;
+    },
+    [t],
+  );
 
   // Server state
   const [serverStatus, setServerStatus] = useState<LANServerStatus>("idle");
@@ -62,15 +80,10 @@ export function LANSyncDialog({ open, onClose, mode }: LANSyncDialogProps) {
       const newServer = createLANServer({
         deviceName,
         events: {
-          onStatusChange: (status) => {
-            setServerStatus(status);
-            if (status === "error") {
-              setShowManualIPInput(true);
-            }
-          },
+          onStatusChange: setServerStatus,
           onError: (err) => {
-            setError(err);
-            setShowManualIPInput(true);
+            setError(normalizeServerError(err));
+            setShowManualIPInput(isManualIPError(err));
           },
         },
       });
@@ -83,11 +96,11 @@ export function LANSyncDialog({ open, onClose, mode }: LANSyncDialogProps) {
       setServer(newServer);
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e);
-      setError(errorMsg);
+      setError(normalizeServerError(errorMsg));
       setServerStatus("error");
-      setShowManualIPInput(true);
+      setShowManualIPInput(isManualIPError(errorMsg));
     }
-  }, []);
+  }, [isManualIPError, normalizeServerError]);
 
   const handleStartWithManualIP = useCallback(async () => {
     if (!manualServerIP) {
@@ -105,7 +118,7 @@ export function LANSyncDialog({ open, onClose, mode }: LANSyncDialogProps) {
         deviceName,
         events: {
           onStatusChange: setServerStatus,
-          onError: setError,
+          onError: (err) => setError(normalizeServerError(err)),
         },
       });
 
@@ -118,10 +131,11 @@ export function LANSyncDialog({ open, onClose, mode }: LANSyncDialogProps) {
       }
       setServer(newServer);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      setError(normalizeServerError(errorMsg));
       setServerStatus("error");
     }
-  }, [manualServerIP, t]);
+  }, [manualServerIP, normalizeServerError, t]);
 
   const handleStopServer = useCallback(async () => {
     if (server) {
@@ -191,6 +205,9 @@ export function LANSyncDialog({ open, onClose, mode }: LANSyncDialogProps) {
         <DialogTitle>
           {mode === "server" ? t("settings.syncLANServerTitle") : t("settings.syncLANClientTitle")}
         </DialogTitle>
+        <DialogDescription className="sr-only">
+          {mode === "server" ? t("settings.syncLANServerDesc") : t("settings.syncLANClientDesc")}
+        </DialogDescription>
 
         {mode === "server" ? (
           <div className="space-y-4">
