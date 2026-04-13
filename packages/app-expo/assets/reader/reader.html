@@ -253,7 +253,16 @@
       if (!view || !view.renderer || !view.renderer.getContents) return [];
       const contents = view.renderer.getContents();
       if (!contents || !contents.length) return [];
-      return contents.filter((content) => content && content.doc && content.index != null);
+      const unique = [];
+      for (const content of contents) {
+        if (!content || !content.doc || content.index == null) continue;
+        const exists = unique.some(
+          (item) => item.doc === content.doc && item.index === content.index
+        );
+        if (exists) continue;
+        unique.push(content);
+      }
+      return unique;
     }
 
     function getRendererContentForDoc(doc) {
@@ -1919,8 +1928,10 @@ a { color: ${primary} !important; }
           skippedNotStartVisible: 0,
           skippedEmptyText: 0,
           skippedCFI: 0,
+          skippedDuplicate: 0,
           startVisibilityMode: 'range-start',
         };
+        const seenVisibleIdentities = new Set();
         // Track the first visible range for range-based TTS cursor alignment
         // Must be declared here (outer scope) so it's accessible after both loops close.
         let firstVisibleRange = null;
@@ -2023,6 +2034,12 @@ a { color: ${primary} !important; }
               try {
                 const cfi = view && view.getCFI ? view.getCFI(sectionIndex, range) : '';
                 if (cfi) {
+                  const identity = getTTSSegmentIdentity(cfi, text);
+                  if (seenVisibleIdentities.has(identity)) {
+                    stats.skippedDuplicate++;
+                    continue;
+                  }
+                  seenVisibleIdentities.add(identity);
                   segments.push({ text, cfi });
                 } else {
                   stats.skippedCFI++;

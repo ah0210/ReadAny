@@ -328,10 +328,8 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
       async (alignCfi?: string | null): Promise<TTSSegmentDetail[]> => {
         const view = viewRef.current;
         const renderer = view?.renderer;
-        const current = renderer?.getContents?.()?.[0];
-        const doc = current?.doc as Document | undefined;
-        const sectionIndex = current?.index ?? 0;
-        if (!view || !renderer || !doc) return [];
+        const contents = renderer?.getContents?.() ?? [];
+        if (!view || !renderer || !contents.length) return [];
 
         await ensureDesktopTTS();
 
@@ -343,7 +341,7 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
             const visibleRight = renderer.start;
             return rect.right > visibleLeft && rect.left < visibleRight;
           }
-          const win = doc.defaultView;
+          const win = (contents[0]?.doc as Document | undefined)?.defaultView;
           if (!win) return false;
           return (
             rect.right > 0 &&
@@ -370,16 +368,10 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
 
         const blockSelector =
           "p, h1, h2, h3, h4, h5, h6, li, blockquote, dd, dt, figcaption, pre, td, th";
-        const visibleBlocks = Array.from(doc.querySelectorAll(blockSelector)).filter((block) => {
-          if (!block.textContent?.trim()) return false;
-          if (block.closest(".readany-translation")) return false;
-          return isRectVisibleInReader(block.getBoundingClientRect());
-        });
-
         const lang =
-          doc.documentElement.lang ||
-          doc.documentElement.getAttribute("xml:lang") ||
-          doc.body.lang ||
+          (contents[0]?.doc as Document | undefined)?.documentElement.lang ||
+          (contents[0]?.doc as Document | undefined)?.documentElement.getAttribute("xml:lang") ||
+          (contents[0]?.doc as Document | undefined)?.body.lang ||
           navigator.language ||
           "en";
         const SegmenterCtor = (
@@ -397,91 +389,108 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
           : null;
 
         const segments: TTSSegmentDetail[] = [];
-        for (const block of visibleBlocks) {
-          const walker = doc.createTreeWalker(block, NodeFilter.SHOW_TEXT, {
-            acceptNode: (node) => {
-              if (!node.nodeValue?.trim()) return NodeFilter.FILTER_SKIP;
-              const parent = (node as Text).parentElement;
-              if (!parent) return NodeFilter.FILTER_ACCEPT;
-              const tag = parent.tagName.toLowerCase();
-              if (tag === "script" || tag === "style") return NodeFilter.FILTER_REJECT;
-              if (parent.closest(".readany-translation")) return NodeFilter.FILTER_REJECT;
-              return NodeFilter.FILTER_ACCEPT;
-            },
+        const seenVisibleIdentities = new Set<string>();
+        for (const current of contents) {
+          const doc = current?.doc as Document | undefined;
+          const sectionIndex = current?.index ?? 0;
+          if (!doc) continue;
+
+          const visibleBlocks = Array.from(doc.querySelectorAll(blockSelector)).filter((block) => {
+            if (!block.textContent?.trim()) return false;
+            if (block.closest(".readany-translation")) return false;
+            return isRectVisibleInReader(block.getBoundingClientRect());
           });
 
-          const positionedNodes: Array<{ node: Text; start: number; end: number }> = [];
-          let absoluteText = "";
-          for (
-            let textNode = walker.nextNode() as Text | null;
-            textNode;
-            textNode = walker.nextNode() as Text | null
-          ) {
-            const text = textNode.nodeValue || "";
-            const start = absoluteText.length;
-            absoluteText += text;
-            positionedNodes.push({ node: textNode, start, end: absoluteText.length });
-          }
-          if (!absoluteText.trim() || positionedNodes.length === 0) continue;
+          for (const block of visibleBlocks) {
+            const walker = doc.createTreeWalker(block, NodeFilter.SHOW_TEXT, {
+              acceptNode: (node) => {
+                if (!node.nodeValue?.trim()) return NodeFilter.FILTER_SKIP;
+                const parent = (node as Text).parentElement;
+                if (!parent) return NodeFilter.FILTER_ACCEPT;
+                const tag = parent.tagName.toLowerCase();
+                if (tag === "script" || tag === "style") return NodeFilter.FILTER_REJECT;
+                if (parent.closest(".readany-translation")) return NodeFilter.FILTER_REJECT;
+                return NodeFilter.FILTER_ACCEPT;
+              },
+            });
 
-          const rawSegments = segmenter
-            ? Array.from(segmenter.segment(absoluteText)).map(
-                (item: { index: number; segment: string }) => ({
-                  start: item.index,
-                  end: item.index + item.segment.length,
-                }),
-              )
-            : (absoluteText.match(/[^。！？!?；;\n]+[。！？!?；;…]?/gu) || [absoluteText]).reduce<
-                Array<{ start: number; end: number }>
-              >((acc, sentence) => {
-                const last = acc.length > 0 ? acc[acc.length - 1] : null;
-                const start = absoluteText.indexOf(sentence, last?.end ?? 0);
-                if (start >= 0) acc.push({ start, end: start + sentence.length });
-                return acc;
-              }, []);
-
-          const resolvePosition = (absoluteOffset: number, isEnd: boolean) => {
-            for (const item of positionedNodes) {
-              if (absoluteOffset < item.end || (isEnd && absoluteOffset <= item.end)) {
-                return {
-                  node: item.node,
-                  offset: Math.max(
-                    0,
-                    Math.min(item.node.nodeValue?.length ?? 0, absoluteOffset - item.start),
-                  ),
-                };
-              }
+            const positionedNodes: Array<{ node: Text; start: number; end: number }> = [];
+            let absoluteText = "";
+            for (
+              let textNode = walker.nextNode() as Text | null;
+              textNode;
+              textNode = walker.nextNode() as Text | null
+            ) {
+              const text = textNode.nodeValue || "";
+              const start = absoluteText.length;
+              absoluteText += text;
+              positionedNodes.push({ node: textNode, start, end: absoluteText.length });
             }
-            const last = positionedNodes[positionedNodes.length - 1];
-            return { node: last.node, offset: last.node.nodeValue?.length ?? 0 };
-          };
+            if (!absoluteText.trim() || positionedNodes.length === 0) continue;
 
-          for (const rawSegment of rawSegments.length
-            ? rawSegments
-            : [{ start: 0, end: absoluteText.length }]) {
-            let start = rawSegment.start;
-            let end = rawSegment.end;
-            while (start < end && /\s/u.test(absoluteText[start] ?? "")) start++;
-            while (end > start && /\s/u.test(absoluteText[end - 1] ?? "")) end--;
-            if (end - start < 2) continue;
+            const rawSegments = segmenter
+              ? Array.from(segmenter.segment(absoluteText)).map(
+                  (item: { index: number; segment: string }) => ({
+                    start: item.index,
+                    end: item.index + item.segment.length,
+                  }),
+                )
+              : (absoluteText.match(/[^。！？!?；;\n]+[。！？!?；;…]?/gu) || [absoluteText]).reduce<
+                  Array<{ start: number; end: number }>
+                >((acc, sentence) => {
+                  const last = acc.length > 0 ? acc[acc.length - 1] : null;
+                  const start = absoluteText.indexOf(sentence, last?.end ?? 0);
+                  if (start >= 0) acc.push({ start, end: start + sentence.length });
+                  return acc;
+                }, []);
 
-            const startPos = resolvePosition(start, false);
-            const endPos = resolvePosition(end, true);
-            if (!startPos || !endPos) continue;
+            const resolvePosition = (absoluteOffset: number, isEnd: boolean) => {
+              for (const item of positionedNodes) {
+                if (absoluteOffset < item.end || (isEnd && absoluteOffset <= item.end)) {
+                  return {
+                    node: item.node,
+                    offset: Math.max(
+                      0,
+                      Math.min(item.node.nodeValue?.length ?? 0, absoluteOffset - item.start),
+                    ),
+                  };
+                }
+              }
+              const last = positionedNodes[positionedNodes.length - 1];
+              return { node: last.node, offset: last.node.nodeValue?.length ?? 0 };
+            };
 
-            const range = doc.createRange();
-            range.setStart(startPos.node, startPos.offset);
-            range.setEnd(endPos.node, endPos.offset);
-            if (!isRangeStartVisibleInReader(range)) continue;
+            for (const rawSegment of rawSegments.length
+              ? rawSegments
+              : [{ start: 0, end: absoluteText.length }]) {
+              let start = rawSegment.start;
+              let end = rawSegment.end;
+              while (start < end && /\s/u.test(absoluteText[start] ?? "")) start++;
+              while (end > start && /\s/u.test(absoluteText[end - 1] ?? "")) end--;
+              if (end - start < 2) continue;
 
-            const text = absoluteText.slice(start, end).replace(/\s+/g, " ").trim();
-            if (!text) continue;
+              const startPos = resolvePosition(start, false);
+              const endPos = resolvePosition(end, true);
+              if (!startPos || !endPos) continue;
 
-            try {
-              const cfi = view.getCFI(sectionIndex, range);
-              if (cfi) segments.push({ text, cfi });
-            } catch {
-              // skip segment if CFI resolution fails
+              const range = doc.createRange();
+              range.setStart(startPos.node, startPos.offset);
+              range.setEnd(endPos.node, endPos.offset);
+              if (!isRangeStartVisibleInReader(range)) continue;
+
+              const text = absoluteText.slice(start, end).replace(/\s+/g, " ").trim();
+              if (!text) continue;
+
+              try {
+                const cfi = view.getCFI(sectionIndex, range);
+                const identity = getTTSSegmentIdentity(cfi, text);
+                if (cfi && !seenVisibleIdentities.has(identity)) {
+                  seenVisibleIdentities.add(identity);
+                  segments.push({ text, cfi });
+                }
+              } catch {
+                // skip segment if CFI resolution fails
+              }
             }
           }
         }
@@ -542,6 +551,8 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
                 return true;
               });
             if (alignedSegments.length > 0) {
+              let returnedSegments = alignedSegments;
+              let returnSource = "aligned";
               if (segments.length > 0) {
                 const visibleIdentities = new Set(
                   segments.map((segment) => getTTSSegmentIdentity(segment.cfi, segment.text)),
@@ -550,17 +561,59 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
                   visibleIdentities.has(getTTSSegmentIdentity(segment.cfi, segment.text)),
                 );
                 if (filtered.length === segments.length) {
-                  return filtered;
+                  returnedSegments = filtered;
+                  returnSource = "aligned-filtered";
+                } else if (filtered.length > 0) {
+                  returnedSegments = segments;
+                  returnSource = "direct-partial-filtered-fallback";
+                } else if (alignCfi) {
+                  const alignedStart = alignedSegments[0] || null;
+                  const alignedStartIdentity = alignedStart
+                    ? getTTSSegmentIdentity(alignedStart.cfi, alignedStart.text)
+                    : null;
+                  const visibleStartIndex = alignedStartIdentity
+                    ? segments.findIndex(
+                        (segment) =>
+                          getTTSSegmentIdentity(segment.cfi, segment.text) === alignedStartIdentity,
+                      )
+                    : -1;
+                  if (visibleStartIndex >= 0) {
+                    returnedSegments = segments.slice(visibleStartIndex);
+                    returnSource = "direct-aligned-slice";
+                  } else {
+                    returnedSegments = segments;
+                    returnSource = "direct-fallback";
+                  }
+                } else {
+                  returnedSegments = segments;
+                  returnSource = "direct-fallback";
                 }
-                return segments;
               }
-              return alignCfi ? alignedSegments : segments;
+              console.log("[FoliateViewer][TTS] visibleTTSSegments", {
+                alignCfi: alignCfi || null,
+                contentsCount: contents.length,
+                directCount: segments.length,
+                alignedCount: alignedSegments.length,
+                returnedCount: returnedSegments.length,
+                returnSource,
+                firstVisibleText: segments[0]?.text || null,
+              });
+              return returnedSegments;
             }
           } catch {
             // fall through to manual segments
           }
         }
 
+        console.log("[FoliateViewer][TTS] visibleTTSSegments", {
+          alignCfi: alignCfi || null,
+          contentsCount: contents.length,
+          directCount: segments.length,
+          alignedCount: 0,
+          returnedCount: segments.length,
+          returnSource: "direct",
+          firstVisibleText: segments[0]?.text || null,
+        });
         return segments;
       },
       [ensureDesktopTTS],

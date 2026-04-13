@@ -210,10 +210,8 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
               </Text>
             </TouchableOpacity>
           </View>
-          <View style={[s.settingRow, s.settingRowMultiline]}>
-            <View style={s.settingLabelBlock}>
-              <Text style={s.settingLabel}>{t("settings.volumeButtonsPageTurn")}</Text>
-            </View>
+          <View style={s.settingRow}>
+            <Text style={s.settingLabel}>{t("settings.volumeButtonsPageTurn")}</Text>
             <TouchableOpacity
               style={[s.settingToggleBtn, volumeButtonsPageTurn === true && s.settingToggleBtnActive]}
               onPress={() => onUpdateSetting("volumeButtonsPageTurn", !volumeButtonsPageTurn)}

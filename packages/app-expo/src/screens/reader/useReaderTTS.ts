@@ -181,6 +181,7 @@ export function useReaderTTS({
   const ttsHandlingPageEndRef = useRef(false);
   const ttsLastStopHandledSignatureRef = useRef<string | null>(null);
   const ttsStartChapterRef = useRef<string>("");
+  const previousReaderBookIdRef = useRef<string | null>(null);
 
   const ttsHighlightColor = "rgba(96, 165, 250, 0.35)";
 
@@ -219,16 +220,46 @@ export function useReaderTTS({
 
   // ─── Reset context caches when bookId changes ───────────────────────────────
   useEffect(() => {
+    const previousBookId = previousReaderBookIdRef.current;
+    previousReaderBookIdRef.current = bookId;
+    const switchedBook = !!previousBookId && previousBookId !== bookId;
+
     ttsContextCacheRef.current.clear();
     ttsContextInflightRef.current.clear();
+    setTtsLastText("");
+    setTtsSegments([]);
+    setTtsPrevPageSegments([]);
+    setTtsFutureSegments([]);
+    setTtsChunkOffset(0);
+    setTtsSourceKind("page");
+    ttsSegmentsRef.current = [];
+    ttsPrevPageSegmentsRef.current = [];
+    ttsFutureSegmentsRef.current = [];
+    ttsLastTextRef.current = "";
+    ttsChunkOffsetRef.current = 0;
     ttsLoadMoreAboveRef.current = null;
     ttsLoadMoreBelowRef.current = null;
     ttsExhaustedAboveAnchorsRef.current.clear();
     ttsExhaustedBelowAnchorsRef.current.clear();
     lastTTSLyricPrimeSignatureRef.current = null;
+    didForceReapplyTTSHighlightRef.current = false;
     ttsLyricPrimeRequestIdRef.current += 1;
     lastFollowedTTSCfiRef.current = null;
-  }, [bookId]);
+    ttsRecoveringLyricsRef.current = null;
+    ttsContinuousRef.current = false;
+    ttsHandlingPageEndRef.current = false;
+    ttsLastStopHandledSignatureRef.current = null;
+    ttsStartChapterRef.current = "";
+    pendingTTSContinueCallbackRef.current = null;
+    if (pendingTTSContinueSafetyTimerRef.current) {
+      clearTimeout(pendingTTSContinueSafetyTimerRef.current);
+      pendingTTSContinueSafetyTimerRef.current = null;
+    }
+    if (switchedBook) {
+      setShowTTS(false);
+      bridgeRef.current?.setTTSHighlight(null);
+    }
+  }, [bookId, bridgeRef, setShowTTS]);
 
   // ─── Sync segment refs whenever state changes ───────────────────────────────
   useEffect(() => {
@@ -260,6 +291,7 @@ export function useReaderTTS({
   const localTTSChunkIndex = Math.max(0, ttsCurrentChunkIndex - ttsChunkOffset);
 
   const currentTTSSegment = useMemo(() => {
+    if (ttsCurrentBookId !== bookId) return null;
     const normalizedCurrentText = (ttsCurrentSegmentText || ttsCurrentText || "")
       .replace(/\s+/g, " ")
       .trim();
@@ -302,7 +334,9 @@ export function useReaderTTS({
     return null;
   }, [
     allLyricSegments,
+    bookId,
     localTTSChunkIndex,
+    ttsCurrentBookId,
     ttsCurrentLocationCfi,
     ttsCurrentSegmentText,
     ttsCurrentText,
@@ -310,9 +344,10 @@ export function useReaderTTS({
   ]);
 
   const resolvedTTSSegmentCfi = useMemo(() => {
+    if (ttsCurrentBookId !== bookId) return null;
     if (currentTTSSegment?.cfi) return currentTTSSegment.cfi;
     return ttsCurrentLocationCfi || null;
-  }, [currentTTSSegment?.cfi, ttsCurrentLocationCfi]);
+  }, [bookId, currentTTSSegment?.cfi, ttsCurrentBookId, ttsCurrentLocationCfi]);
 
   const ttsSourceLabel =
     ttsSourceKind === "selection" ? "来自选中文本" : "从当前页开始";
@@ -1131,7 +1166,9 @@ export function useReaderTTS({
       return;
     }
 
-    const hasActiveSession = ttsPlayState !== "stopped" || !!(ttsCurrentText || ttsLastText).trim();
+    const hasActiveSession =
+      ttsCurrentBookId === bookId &&
+      (ttsPlayState !== "stopped" || !!(ttsCurrentText || ttsLastText).trim());
     const isPlaying = ttsPlayState === "playing" || ttsPlayState === "loading";
     const chapterChanged =
       ttsStartChapterRef.current !== "" && ttsStartChapterRef.current !== currentChapter;
@@ -1146,11 +1183,13 @@ export function useReaderTTS({
     await startPageTTS(ttsContinuousEnabled);
   }, [
     currentChapter,
+    bookId,
     setShowControls,
     setShowTTS,
     showTTS,
     startPageTTS,
     ttsContinuousEnabled,
+    ttsCurrentBookId,
     ttsCurrentText,
     ttsLastText,
     ttsPlayState,
@@ -1543,6 +1582,10 @@ export function useReaderTTS({
   // ─── TTS highlight sync effects ───────────────────────────────────────────
   useEffect(() => {
     if (!webViewReady) return;
+    if (ttsCurrentBookId !== bookId) {
+      bridgeRef.current?.setTTSHighlight(null);
+      return;
+    }
     if (showTTS) {
       bridgeRef.current?.setTTSHighlight(null);
       return;
@@ -1567,13 +1610,19 @@ export function useReaderTTS({
     resolvedTTSSegmentCfi,
     showTTS,
     ttsHighlightColor,
+    ttsCurrentBookId,
     ttsPlayState,
     ttsSourceKind,
     webViewReady,
+    bookId,
   ]);
 
   useEffect(() => {
     if (!webViewReady) {
+      didForceReapplyTTSHighlightRef.current = false;
+      return;
+    }
+    if (ttsCurrentBookId !== bookId) {
       didForceReapplyTTSHighlightRef.current = false;
       return;
     }
@@ -1595,13 +1644,16 @@ export function useReaderTTS({
     resolvedTTSSegmentCfi,
     showTTS,
     ttsHighlightColor,
+    ttsCurrentBookId,
     ttsPlayState,
     ttsSourceKind,
     webViewReady,
+    bookId,
   ]);
 
   useEffect(() => {
     if (!webViewReady || showTTS) return;
+    if (ttsCurrentBookId !== bookId) return;
     if (ttsSourceKind !== "page") return;
     if (ttsPlayState !== "playing" && ttsPlayState !== "paused" && ttsPlayState !== "loading")
       return;
@@ -1617,13 +1669,19 @@ export function useReaderTTS({
     resolvedTTSSegmentCfi,
     showTTS,
     ttsHighlightColor,
+    ttsCurrentBookId,
     ttsPlayState,
     ttsSourceKind,
     webViewReady,
+    bookId,
   ]);
 
   useEffect(() => {
     if (!webViewReady) {
+      lastFollowedTTSCfiRef.current = null;
+      return;
+    }
+    if (ttsCurrentBookId !== bookId) {
       lastFollowedTTSCfiRef.current = null;
       return;
     }
@@ -1639,7 +1697,16 @@ export function useReaderTTS({
     if (!targetCfi || lastFollowedTTSCfiRef.current === targetCfi) return;
     lastFollowedTTSCfiRef.current = targetCfi;
     bridgeRef.current?.goToCFI(targetCfi);
-  }, [bridgeRef, resolvedTTSSegmentCfi, showTTS, ttsPlayState, ttsSourceKind, webViewReady]);
+  }, [
+    bridgeRef,
+    resolvedTTSSegmentCfi,
+    showTTS,
+    ttsCurrentBookId,
+    ttsPlayState,
+    ttsSourceKind,
+    webViewReady,
+    bookId,
+  ]);
 
   useEffect(() => {
     if (ttsCurrentBookId !== bookId) return;
@@ -1799,6 +1866,7 @@ export function useReaderTTS({
       ttsRecoveringLyricsRef.current = null;
       return;
     }
+    if (ttsCurrentBookId !== bookId) return;
     if (ttsSourceKind !== "page") return;
     if (ttsPlayState === "stopped") return;
     if (ttsSegments.length > 0 || ttsPrevPageSegments.length > 0 || ttsFutureSegments.length > 0) {
@@ -1806,8 +1874,10 @@ export function useReaderTTS({
     }
     void recoverTTSLyricsState();
   }, [
+    bookId,
     recoverTTSLyricsState,
     showTTS,
+    ttsCurrentBookId,
     ttsFutureSegments.length,
     ttsPlayState,
     ttsPrevPageSegments.length,
@@ -1869,6 +1939,7 @@ export function useReaderTTS({
       lastTTSLyricPrimeSignatureRef.current = null;
       return;
     }
+    if (ttsCurrentBookId !== bookId) return;
     const activeCfi =
       currentTTSSegment?.cfi || resolvedTTSSegmentCfi || ttsSegments[0]?.cfi || null;
     if (!activeCfi) return;
@@ -1880,9 +1951,11 @@ export function useReaderTTS({
     void primeTTSLyricContext(activeCfi, firstVisibleCfi, lastVisibleCfi);
   }, [
     currentTTSSegment?.cfi,
+    bookId,
     primeTTSLyricContext,
     resolvedTTSSegmentCfi,
     showTTS,
+    ttsCurrentBookId,
     ttsSegments,
   ]);
 
