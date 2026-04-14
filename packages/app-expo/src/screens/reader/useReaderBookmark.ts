@@ -1,7 +1,7 @@
 /**
  * useReaderBookmark — handles bookmark toggling, pending snippet requests, and bookmark list.
  */
-import { useAnnotationStore } from "@/stores";
+import { useAnnotationStore, type AnnotationState } from "@/stores";
 import { generateId } from "@readany/core/utils";
 import { useCallback, useMemo, useRef } from "react";
 
@@ -14,8 +14,8 @@ export interface UseReaderBookmarkOptions {
 
 export interface UseReaderBookmarkResult {
   isBookmarked: boolean;
-  bookBookmarks: ReturnType<typeof useAnnotationStore>["bookmarks"];
-  existingBookmark: ReturnType<typeof useAnnotationStore>["bookmarks"][number] | undefined;
+  bookBookmarks: AnnotationState["bookmarks"];
+  existingBookmark: AnnotationState["bookmarks"][number] | undefined;
   handleToggleBookmark: () => void;
   pendingBookmarkRef: React.RefObject<boolean>;
   onBookmarkSnippet: (text: string) => void;

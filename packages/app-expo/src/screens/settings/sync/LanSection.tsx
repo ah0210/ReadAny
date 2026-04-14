@@ -1,4 +1,5 @@
-import { type LANQRData, createLANServer } from "@readany/core/sync/lan-backend";
+import { type LANQRData, createLANServer } from "@readany/core/sync/lan-server";
+import type { ISyncBackend } from "@readany/core/sync/sync-backend";
 import QRCode from "react-native-qrcode-svg";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -28,7 +29,7 @@ interface LanSectionProps {
   } | null;
   pulseAnim: Animated.Value;
   progressLabel: () => string | null;
-  onSyncWithBackend: (backend: unknown) => Promise<{ success: boolean; error?: string } | null>;
+  onSyncWithBackend: (backend: ISyncBackend) => Promise<{ success: boolean; error?: string } | null>;
 }
 
 export function LanSection({
@@ -67,11 +68,11 @@ export function LanSection({
       const server = createLANServer({
         deviceName,
         events: {
-          onStatusChange: (status) => {
+          onStatusChange: (status: string) => {
             setLanServerStatus(status);
             if (status === "error") setShowManualIPInput(true);
           },
-          onError: (err) => {
+          onError: (err: string) => {
             setLanError(err);
             setShowManualIPInput(true);
           },
