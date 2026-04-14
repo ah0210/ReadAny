@@ -110,8 +110,8 @@ export function FontSettings() {
       );
 
       if (size > FONT_SIZE_LIMIT) {
-        const platform = getPlatformService();
-        await platform.deleteFile(filePath);
+        const { remove } = await import("@tauri-apps/plugin-fs");
+        await remove(filePath);
         setImporting(false);
         setPendingFontFile(null);
         return;
@@ -329,7 +329,7 @@ export function FontSettings() {
 
       {/* Name modal for local import */}
       <Dialog open={nameModalOpen} onOpenChange={setNameModalOpen}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="sm:max-w-sm" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{t("fonts.nameFont", "字体名称")}</DialogTitle>
           </DialogHeader>
@@ -359,7 +359,7 @@ export function FontSettings() {
 
       {/* URL modal for remote import */}
       <Dialog open={urlModalOpen} onOpenChange={setUrlModalOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{t("fonts.fromUrl", "在线链接")}</DialogTitle>
           </DialogHeader>

@@ -1081,7 +1081,30 @@
     }
 
     function injectCustomFontFace(css) {
-      // Inject @font-face CSS into the main document head
+      // Split @import rules (must be <link>) from @font-face rules (can be <style>)
+      const importLines = [];
+      const fontFaceLines = [];
+      for (const line of css.split('\n')) {
+        if (line.trim().startsWith('@import')) {
+          importLines.push(line.trim());
+        } else {
+          fontFaceLines.push(line);
+        }
+      }
+
+      // Remove old <link> tags for custom fonts
+      document.querySelectorAll('link.__readany_css_font__').forEach(el => el.remove());
+      for (const importRule of importLines) {
+        const url = importRule.replace(/^@import\s+url\(['"]?/, '').replace(/['"]?\);?\s*$/, '').trim();
+        if (!url) continue;
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = url;
+        link.className = '__readany_css_font__';
+        document.head.appendChild(link);
+      }
+
+      // Inject @font-face via <style>
       const styleId = '__readany_custom_font_face__';
       let el = document.getElementById(styleId);
       if (!el) {
@@ -1089,7 +1112,7 @@
         el.id = styleId;
         document.head.appendChild(el);
       }
-      el.textContent = css || '';
+      el.textContent = fontFaceLines.join('\n');
     }
 
     function setThemeColors(colors) {

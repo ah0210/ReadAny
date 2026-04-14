@@ -1780,8 +1780,7 @@ function getRendererStyles(settings: ViewSettings, theme: AppTheme): string {
     ? settings.customFontFamily
     : `'${fontTheme.cjk}', '${fontTheme.serif}', serif`;
 
-  return `
-/* Font styles */
+  return `${settings.customFontFaceCSS ? `/* Custom font faces */\n${settings.customFontFaceCSS}\n\n` : ""}/* Font styles */
 html {
   --serif-font: "${fontTheme.serif}";
   --sans-serif-font: "${fontTheme.sansSerif}";
@@ -1846,7 +1845,6 @@ pre {
   white-space: pre-wrap !important;
   tab-size: 2;
 }
-${settings.customFontFaceCSS ? `\n/* Custom font faces */\n${settings.customFontFaceCSS}` : ""}
 `;
 }
 
